@@ -548,7 +548,7 @@ function addAnnouncement(){
 
 let adminToken=sessionStorage.getItem("safrook_admin_token")||"";
 function openAdminLogin(){
- if(adminToken){ show("admin"); return; }
+ if(adminToken){ show("adminScreen"); return; }
  adminPinInput.value="";adminLoginMsg.innerHTML="";adminLock.style.display="flex";adminPinInput.focus();
 }
 function closeAdminLogin(){adminLock.style.display="none"}
@@ -559,7 +559,7 @@ async function verifyAdmin(){
   let r=await fetch("/api/admin-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({pin})});
   let x=await r.json();
   if(!r.ok||!x.token){adminLoginMsg.innerHTML='<div class="status">Incorrect Admin PIN.</div>';return}
-  adminToken=x.token;sessionStorage.setItem("safrook_admin_token",adminToken);closeAdminLogin();show("admin");
+  adminToken=x.token;sessionStorage.setItem("safrook_admin_token",adminToken);closeAdminLogin();show("adminScreen");
  }catch(e){adminLoginMsg.innerHTML='<div class="status">Admin login requires the deployed Safrook backend.</div>'}
 }
 function adminLogout(){adminToken="";sessionStorage.removeItem("safrook_admin_token");show("home")}
