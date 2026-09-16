@@ -577,9 +577,15 @@ function snapshot(){
 }
 async function saveLocal(){
  try{
-   localStorage.setItem("safrook_cache",JSON.stringify(snapshot()));
-   await fetch("/api/state",{method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+adminToken},body:JSON.stringify(snapshot())});
- }catch(e){}
+   const data=snapshot();
+   localStorage.setItem("safrook_cache",JSON.stringify(data));
+   const r=await fetch("/api/state",{method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+adminToken},body:JSON.stringify(data)});
+   if(!r.ok){
+     if(r.status===401 || r.status===403){adminToken="";sessionStorage.removeItem("safrook_admin_token");}
+     return false;
+   }
+   return true;
+ }catch(e){return false;}
 }
 function applyState(x){
  if(!x)return;
@@ -622,15 +628,19 @@ function loadGameForm(){
  gTitle.value=game.title;gDate.value=game.date;gStart.value=game.start;gEnd.value=game.end;
  gLocation.value=game.location;gField.value=game.field;gCapacity.value=game.capacity;gFee.value=game.guestFee;gOpen.checked=game.registrationOpen;
 }
-function saveGame(){
+async function saveGame(){
  game.title=gTitle.value.trim()||"Safrook Weekly Game";
  game.date=gDate.value;game.start=gStart.value;game.end=gEnd.value;
  game.location=gLocation.value.trim()||"TBD";game.field=gField.value.trim()||"";
  game.capacity=Math.max(1,parseInt(gCapacity.value)||22);
  game.guestFee=Math.max(0,parseFloat(gFee.value)||0);game.registrationOpen=gOpen.checked;
  state.capacity=game.capacity;
- gameAdminMsg.innerHTML='<div class="status">✓ Game updated. The Home card now reflects these settings.</div>';saveLocal();
  render();
+ gameAdminMsg.innerHTML='<div class="status">Saving game...</div>';
+ const saved=await saveLocal();
+ gameAdminMsg.innerHTML=saved
+   ? '<div class="status">✓ Game saved successfully. These settings are now shared with everyone.</div>'
+   : '<div class="status">⚠ Game changed on this device, but could not be saved to the Safrook server. Please unlock Admin again and retry.</div>';
 }
 function renderGame(){
  document.getElementById("gameTitle").textContent=game.title;
@@ -679,7 +689,7 @@ function editMember(i) {
   document.getElementById("newMemberName").scrollIntoView({behavior:"smooth", block:"center"});
 }
 
-function saveMemberChanges() {
+async function saveMemberChanges() {
   if (editingMemberIndex < 0) return;
 
   const name = document.getElementById("newMemberName").value.trim();
@@ -693,37 +703,40 @@ function saveMemberChanges() {
     return;
   }
 
-  const oldName = safrookMembers[editingMemberIndex].name;
+  const oldMember={...safrookMembers[editingMemberIndex]};
+  const oldAvailability=memberAvailability[oldMember.name];
 
   safrookMembers[editingMemberIndex] = {
-    ...safrookMembers[editingMemberIndex],
-    name, position, age, rating, pin
+    ...safrookMembers[editingMemberIndex], name, position, age, rating, pin
   };
 
-  if (oldName !== name &&
-      Object.prototype.hasOwnProperty.call(memberAvailability, oldName)) {
-    memberAvailability[name] = memberAvailability[oldName];
-    delete memberAvailability[oldName];
+  if (oldMember.name !== name &&
+      Object.prototype.hasOwnProperty.call(memberAvailability, oldMember.name)) {
+    memberAvailability[name] = memberAvailability[oldMember.name];
+    delete memberAvailability[oldMember.name];
   }
 
-  editingMemberIndex = -1;
-  state.totalMembers = safrookMembers.filter(m => m.active !== false).length;
+  state.totalMembers=safrookMembers.filter(m=>m.active!==false).length;
+  adminMsg.innerHTML='<div class="status">Saving member changes...</div>';
+  const saved=await saveLocal();
 
-  saveLocal();
-  populateMembers();
-  render();
-
-  document.getElementById("newMemberName").value = "";
-  document.getElementById("newMemberPosition").value = "";
-  document.getElementById("newMemberAge").value = "";
-  document.getElementById("newMemberRating").value = "";
-  document.getElementById("newMemberPin").value = "";
-
-  const btn = document.querySelector("#membersAdmin .memberbtn");
-  if (btn) {
-    btn.textContent = "+ Add Safrook Member";
-    btn.onclick = addMember;
+  if(!saved){
+    safrookMembers[editingMemberIndex]=oldMember;
+    if(oldMember.name!==name){
+      delete memberAvailability[name];
+      if(oldAvailability!==undefined) memberAvailability[oldMember.name]=oldAvailability;
+    }
+    populateMembers();render();
+    adminMsg.innerHTML='<div class="status">⚠ Member changes could not be saved. Please unlock Admin again and retry.</div>';
+    return;
   }
+
+  editingMemberIndex=-1;
+  populateMembers();render();
+  ["newMemberName","newMemberPosition","newMemberAge","newMemberRating","newMemberPin"].forEach(id=>document.getElementById(id).value="");
+  const btn=document.querySelector("#membersAdmin .memberbtn");
+  if(btn){btn.textContent="+ Add Safrook Member";btn.onclick=addMember;}
+  adminMsg.innerHTML='<div class="status">✓ Member information saved successfully.</div>';
 }
 
 function populateMembers(){
@@ -742,21 +755,51 @@ function populateMembers(){
    </div>
  </div>`).join('');
 }
-function addMember(){
+async function addMember(){
  let name=document.getElementById('newMemberName').value.trim();
  let pin=document.getElementById('newMemberPin').value.trim();
  if(!name || !/^\d{4}$/.test(pin)){adminMsg.innerHTML='<div class="status">Enter a member name and a 4-digit PIN.</div>';return}
  if(safrookMembers.some(m=>m.name===name)){adminMsg.innerHTML='<div class="status">This member already exists.</div>';return}
- safrookMembers.push({name,position:newMemberPosition.value,age:newMemberAge.value,rating:newMemberRating.value,pin,active:true});
- adminMsg.innerHTML='<div class="status">✓ '+name+' added as a Safrook Member.</div>';
+
+ let member={name,position:newMemberPosition.value,age:newMemberAge.value,rating:newMemberRating.value,pin,active:true};
+ safrookMembers.push(member);
+ state.totalMembers=safrookMembers.filter(m=>m.active!==false).length;
+ adminMsg.innerHTML='<div class="status">Saving new member...</div>';
+
+ const saved=await saveLocal();
+ if(!saved){
+   safrookMembers=safrookMembers.filter(m=>m!==member);
+   state.totalMembers=safrookMembers.filter(m=>m.active!==false).length;
+   populateMembers();render();
+   adminMsg.innerHTML='<div class="status">⚠ Member could not be saved. Please unlock Admin again and retry.</div>';
+   return;
+ }
+
  newMemberName.value='';newMemberPin.value='';newMemberAge.value='';newMemberPosition.value='';newMemberRating.value='';
- (async()=>{await loadLocal();populateMembers();loadGameForm();syncGuests();render();renderGuestAdmin();renderAnnouncements();renderGames('upcoming');})();
+ populateMembers();render();
+ adminMsg.innerHTML='<div class="status">✓ '+name+' added and saved as a Safrook Member.</div>';
 }
-function resetPin(i){
+
+async function resetPin(i){
  let p=prompt('Enter a new 4-digit PIN for '+safrookMembers[i].name);
- if(p && /^\d{4}$/.test(p)){safrookMembers[i].pin=p;alert('PIN updated successfully.')}else if(p!==null){alert('PIN must be exactly 4 digits.')}
+ if(p===null)return;
+ if(!/^\d{4}$/.test(p)){alert('PIN must be exactly 4 digits.');return}
+
+ const oldPin=safrookMembers[i].pin;
+ safrookMembers[i].pin=p;
+ const saved=await saveLocal();
+ if(saved){
+   alert('PIN updated and saved successfully.');
+ }else{
+   safrookMembers[i].pin=oldPin;
+   alert('PIN could not be saved. Please unlock Admin again and retry.');
+ }
 }
-populateMembers();loadGameForm();syncGuests();render();renderGuestAdmin();renderAnnouncements();renderGames('upcoming');
+
+(async function startSafrook(){
+ await loadLocal();
+ populateMembers();loadGameForm();syncGuests();render();renderGuestAdmin();renderAnnouncements();renderGames('upcoming');
+})();
 </script>
 <div id="adminLock">
  <div class="lockCard">
