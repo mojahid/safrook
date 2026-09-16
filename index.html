@@ -358,70 +358,47 @@ if(m && p===m.pin){
  memberMsg.innerHTML='<div class="status">Incorrect PIN. Please try again.</div>';
  document.getElementById('availabilityPanel').classList.add('hidden');
 }}
-function setAvailability(canPlay){
-let name=document.getElementById('memberName').value;
-let previous=memberAvailability[name];
-let msg=document.getElementById('availabilityMsg');
-
-if(canPlay){
-  if(previous===false){
-    let playingMembers=state.totalMembers-state.unavailableMembers;
-    let total=playingMembers+state.guests;
-    if(total>=state.capacity){
-      memberAvailability[name]="waiting";
-      state.waiting++;
-      msg.innerHTML='<div class="status">The game is currently full. '+name+' has been added to the waiting list.</div>';
-      render();
-      return;
-    }
-    state.unavailableMembers=Math.max(0,state.unavailableMembers-1);
-  }
-  memberAvailability[name]=true;
-  msg.innerHTML='<div class="status">✓ '+name+' is confirmed to play this game.</div>';
-}else{
-  if(previous==="waiting"){
-    state.waiting=Math.max(0,state.waiting-1);
-    memberAvailability[name]=false;
-    msg.innerHTML='<div class="status">✓ '+name+' is no longer waiting for this game.</div>';
-    render();
-    return;
-  }
-  if(previous!==false){
-    state.unavailableMembers++;
-    memberAvailability[name]=false;
-  }
-  msg.innerHTML='<div class="status">✓ '+name+' can’t play. The reserved spot is now available to a guest.</div>';
+async function setAvailability(canPlay){
+ let name=document.getElementById('memberName').value;
+ let pin=document.getElementById('memberPin').value.trim();
+ let msg=document.getElementById('availabilityMsg');
+ msg.innerHTML='<div class="status">Saving your status...</div>';
+ let r=await publicAction("/api/member-status",{name,pin,canPlay});
+ if(!r.ok){msg.innerHTML='<div class="status">⚠ Status could not be saved. '+r.error+'</div>';return}
+ populateMembers();syncGuests();render();renderGuestAdmin();
+ msg.innerHTML=canPlay
+  ? '<div class="status">✓ '+name+' is confirmed to play. Status saved.</div>'
+  : '<div class="status">✓ '+name+' can’t play. The spot is now available to a guest. Status saved.</div>';
 }
-render();
-}
-function guestRegister(){
-let n=document.getElementById('guestName').value.trim();
-if(!n){guestMsg.innerHTML='<div class="status">Please enter the guest name.</div>';return}
-if(!game.registrationOpen){guestMsg.innerHTML='<div class="status">Registration is currently closed.</div>';return}
-if(guestRecords.some(g=>g.name.toLowerCase()===n.toLowerCase())){guestMsg.innerHTML='<div class="status">This guest is already registered.</div>';return}
-let playingMembers=state.totalMembers-state.unavailableMembers;
-let confirmed=guestRecords.filter(g=>g.status==="confirmed").length;
-let status=(playingMembers+confirmed<state.capacity)?"confirmed":"waiting";
-guestRecords.push({name:n,status:status,paid:false});
-guestMsg.innerHTML=status==="confirmed"
-?'<div class="status">✓ '+n+' is confirmed. Guest fee: $'+game.guestFee+'.</div>'
-:'<div class="status">Game is full. '+n+' was added to the waiting list.</div>';
-document.getElementById('guestName').value="";
-syncGuests();render();renderGuestAdmin();
+async function guestRegister(){
+ let n=document.getElementById('guestName').value.trim();
+ if(!n){guestMsg.innerHTML='<div class="status">Please enter the guest name.</div>';return}
+ if(!game.registrationOpen){guestMsg.innerHTML='<div class="status">Registration is currently closed.</div>';return}
+ guestMsg.innerHTML='<div class="status">Registering guest...</div>';
+ let r=await publicAction("/api/guest-register",{name:n});
+ if(!r.ok){guestMsg.innerHTML='<div class="status">⚠ Guest could not be registered. '+r.error+'</div>';return}
+ document.getElementById('guestName').value="";
+ syncGuests();render();renderGuestAdmin();
+ guestMsg.innerHTML=r.data.status==="confirmed"
+  ? '<div class="status">✓ '+n+' is confirmed. Guest fee: $'+game.guestFee+'. Registration saved.</div>'
+  : '<div class="status">Game is full. '+n+' was added to the waiting list. Registration saved.</div>';
 }
 function syncGuests(){
  state.guests=guestRecords.filter(g=>g.status==="confirmed").length;
  state.waiting=guestRecords.filter(g=>g.status==="waiting").length + Object.values(memberAvailability).filter(v=>v==="waiting").length;
 }
-function togglePaid(i){
- guestRecords[i].paid=!guestRecords[i].paid;
- saveLocal();renderGuestAdmin();
+async function togglePaid(i){
+ let old=guestRecords[i].paid;
+ guestRecords[i].paid=!old;renderGuestAdmin();
+ if(!await saveLocal()){guestRecords[i].paid=old;renderGuestAdmin();alert("Could not save payment change. "+lastSaveError);}
 }
-function removeGuest(i){
+async function removeGuest(i){
+ let backup=guestRecords.map(g=>({...g}));
  let wasConfirmed=guestRecords[i].status==="confirmed";
  guestRecords.splice(i,1);
  if(wasConfirmed) promoteWaiting();
  syncGuests();render();renderGuestAdmin();
+ if(!await saveLocal()){guestRecords=backup;syncGuests();render();renderGuestAdmin();alert("Could not save guest removal. "+lastSaveError);}
 }
 function promoteWaiting(){
  let playingMembers=state.totalMembers-state.unavailableMembers;
@@ -446,7 +423,7 @@ function renderGuestAdmin(){
 }
 
 function activeConfirmedPlayers(){
- let members=safrookMembers.filter(m=>m.active && memberAvailability[m.name]!==false && memberAvailability[m.name]!=="waiting")
+ let members=safrookMembers.filter(m=>m.active!==false && memberAvailability[m.name]!==false && memberAvailability[m.name]!=="waiting")
    .map(m=>({name:m.name,position:m.position||"Unknown",age:Number(m.age)||35,rating:Number(m.rating)||2,type:"Safrook Member"}));
  let guests=guestRecords.filter(g=>g.status==="confirmed")
    .map(g=>({name:g.name,position:"Unknown",age:35,rating:2,type:"Guest"}));
@@ -595,6 +572,15 @@ async function saveLocal(){
    lastSaveError="Network/Function error — "+(e?.message||String(e));
    return false;
  }
+}
+async function publicAction(path,payload){
+ try{
+  const r=await fetch(path,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
+  let x={}; try{x=await r.json()}catch(e){}
+  if(!r.ok) return {ok:false,error:x.error||("HTTP "+r.status)};
+  if(x.state) applyState(x.state);
+  return {ok:true,data:x};
+ }catch(e){return {ok:false,error:e?.message||String(e)}}
 }
 function applyState(x){
  if(!x)return;
