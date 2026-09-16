@@ -575,17 +575,25 @@ function snapshot(){
  return {game,safrookMembers,memberAvailability,guestRecords,announcements,games,
          teams:{a:generatedA,b:generatedB,published:teamsPublished}};
 }
+let lastSaveError="";
 async function saveLocal(){
  try{
    const data=snapshot();
    localStorage.setItem("safrook_cache",JSON.stringify(data));
    const r=await fetch("/api/state",{method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+adminToken},body:JSON.stringify(data)});
    if(!r.ok){
-     if(r.status===401 || r.status===403){adminToken="";sessionStorage.removeItem("safrook_admin_token");}
+     let detail="";
+     try{const x=await r.json();detail=x?.error||x?.message||JSON.stringify(x);}catch(e){try{detail=await r.text()}catch(_){}}
+     lastSaveError="HTTP "+r.status+(detail?" — "+detail:"");
+     if(r.status===401||r.status===403){adminToken="";sessionStorage.removeItem("safrook_admin_token");}
      return false;
    }
+   lastSaveError="";
    return true;
- }catch(e){return false;}
+ }catch(e){
+   lastSaveError="Network/Function error — "+(e?.message||String(e));
+   return false;
+ }
 }
 function applyState(x){
  if(!x)return;
@@ -640,7 +648,7 @@ async function saveGame(){
  const saved=await saveLocal();
  gameAdminMsg.innerHTML=saved
    ? '<div class="status">✓ Game saved successfully. These settings are now shared with everyone.</div>'
-   : '<div class="status">⚠ Game changed on this device, but could not be saved to the Safrook server. Please unlock Admin again and retry.</div>';
+   : '<div class="status">⚠ Game could not be saved to the Safrook server.<br><strong>'+lastSaveError+'</strong><br>Please send me this error.</div>';
 }
 function renderGame(){
  document.getElementById("gameTitle").textContent=game.title;
