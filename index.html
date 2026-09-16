@@ -148,7 +148,10 @@ input,select{width:100%;padding:14px;margin:8px 0 14px;border-radius:12px;border
 <div class="heroCopy"><h1>Weekly football.<span>Better organized.</span></h1>
 <p>Register for games, follow announcements, check the schedule and see balanced team selections in one place.</p></div>
 
-<section id="home" class="screen active"><div class="card">
+<section id="home" class="screen active">
+<button class="announcement" style="width:100%;color:white;text-align:left;cursor:pointer;margin-bottom:18px" onclick="show('announcementsScreen')">
+<span style="font-size:24px">📣</span><div><b>Announcements</b><div class="muted" id="latestAnnouncement">Check the latest Safrook updates</div></div>
+</button><div class="card">
 <div class="gold">NEXT GAME</div><div class="title" id="gameTitle">Safrook Weekly Game</div>
 <div class="details">
 <div class="detail">📅 &nbsp;<b id="date">Sat, Sep 19, 2026</b><div class="muted">Date</div></div>
@@ -170,9 +173,6 @@ input,select{width:100%;padding:14px;margin:8px 0 14px;border-radius:12px;border
 <button class="home-link" onclick="show('gamesScreen')"><span>📅</span>Games</button>
 <button class="home-link" onclick="openAdminLogin()"><span>⚙️</span>Admin</button>
 </div>
-<button class="announcement" style="width:100%;color:white;text-align:left;cursor:pointer" onclick="show('announcementsScreen')">
-<span style="font-size:24px">📣</span><div><b>Announcements</b><div class="muted" id="latestAnnouncement">Check the latest Safrook updates</div></div>
-</button>
 </section>
 
 
