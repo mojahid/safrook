@@ -279,7 +279,7 @@ input,select{width:100%;padding:14px;margin:8px 0 14px;border-radius:12px;border
 <input id="announcementTitle" placeholder="Announcement title">
 <textarea id="announcementText" placeholder="Write announcement..." style="width:100%;min-height:90px;padding:14px;margin:8px 0 14px;border-radius:12px;border:1px solid #365b7e;background:#071a31;color:white;font:inherit"></textarea>
 <button class="memberbtn" style="width:100%;padding:15px;border:0;border-radius:14px;font-weight:800" onclick="addAnnouncement()">Publish Announcement</button>
-<div id="announcementAdminMsg"></div><div id="announcementAdminList" style="margin-top:14px"></div>
+<div id="announcementAdminMsg"></div><div style="margin-top:24px;padding-top:18px;border-top:1px solid #365b7e"><h3 style="margin:0 0 12px">Existing Announcements</h3><div id="announcementAdminList"></div></div>
 </div>
 
 </div><div id="guestsAdmin" class="adminSection"><div class="choice" style="margin-top:24px">
@@ -654,9 +654,11 @@ async function loadLocal(){
  try{let x=localStorage.getItem("safrook_cache");if(x)applyState(JSON.parse(x))}catch(e){}
 }
 function adminTab(id){
-
  document.querySelectorAll(".adminSection").forEach(x=>x.classList.remove("active"));
  let el=document.getElementById(id); if(el)el.classList.add("active");
+ if(id==="newsAdmin") renderAnnouncements();
+ if(id==="membersAdmin") populateMembers();
+ if(id==="guestsAdmin") renderGuestAdmin();
 }
 
 function prettyDate(v){
