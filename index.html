@@ -548,7 +548,7 @@ function addAnnouncement(){
 
 let adminToken=sessionStorage.getItem("safrook_admin_token")||"";
 function openAdminLogin(){
- if(adminToken){ show("adminScreen"); return; }
+ if(adminToken){ show("admin"); return; }
  adminPinInput.value="";adminLoginMsg.innerHTML="";adminLock.style.display="flex";adminPinInput.focus();
 }
 function closeAdminLogin(){adminLock.style.display="none"}
@@ -559,7 +559,7 @@ async function verifyAdmin(){
   let r=await fetch("/api/admin-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({pin})});
   let x=await r.json();
   if(!r.ok||!x.token){adminLoginMsg.innerHTML='<div class="status">Incorrect Admin PIN.</div>';return}
-  adminToken=x.token;sessionStorage.setItem("safrook_admin_token",adminToken);closeAdminLogin();show("adminScreen");
+  adminToken=x.token;sessionStorage.setItem("safrook_admin_token",adminToken);closeAdminLogin();show("admin");
  }catch(e){adminLoginMsg.innerHTML='<div class="status">Admin login requires the deployed Safrook backend.</div>'}
 }
 function adminLogout(){adminToken="";sessionStorage.removeItem("safrook_admin_token");show("home")}
@@ -633,6 +633,31 @@ function renderGame(){
  document.getElementById("field").textContent=game.field;
 }
 
+
+let editingMemberIndex=-1;
+function editMember(i){
+ let m=safrookMembers[i]; if(!m)return;
+ editingMemberIndex=i;
+ editName.value=m.name||""; editPosition.value=m.position||"Midfielder";
+ editAge.value=m.age||""; editRating.value=String(m.rating||2);
+ editPin.value=m.pin||""; editActive.checked=m.active!==false;
+ editMemberMsg.innerHTML=""; memberEditModal.style.display="flex";
+}
+function closeMemberEdit(){memberEditModal.style.display="none";editingMemberIndex=-1}
+function saveMemberEdit(){
+ if(editingMemberIndex<0)return;
+ let name=editName.value.trim(),age=parseInt(editAge.value),rating=parseInt(editRating.value),pin=editPin.value.trim();
+ if(!name||!age||!/^\d{4}$/.test(pin)){editMemberMsg.innerHTML='<div class="status">Enter a name, valid age and 4-digit PIN.</div>';return}
+ let old=safrookMembers[editingMemberIndex].name;
+ safrookMembers[editingMemberIndex]={...safrookMembers[editingMemberIndex],name,position:editPosition.value,age,rating,pin,active:editActive.checked};
+ if(old!==name && Object.prototype.hasOwnProperty.call(memberAvailability,old)){
+   memberAvailability[name]=memberAvailability[old]; delete memberAvailability[old];
+ }
+ state.totalMembers=safrookMembers.filter(m=>m.active!==false).length;
+ state.unavailableMembers=Object.values(memberAvailability).filter(v=>v===false).length;
+ saveLocal(); populateMembers(); syncGuests(); render(); closeMemberEdit();
+}
+
 function populateMembers(){
  let sel=document.getElementById('memberName');
  if(sel) sel.innerHTML=safrookMembers.filter(m=>m.active).map(m=>'<option>'+m.name+'</option>').join('');
@@ -662,6 +687,22 @@ function resetPin(i){
 }
 populateMembers();loadGameForm();syncGuests();render();renderGuestAdmin();renderAnnouncements();renderGames('upcoming');
 </script>
+
+<div id="memberEditModal" style="position:fixed;inset:0;background:rgba(2,10,22,.88);display:none;align-items:center;justify-content:center;z-index:9998;padding:20px">
+ <div class="lockCard" style="width:min(440px,100%);background:#081d35;border:1px solid #31577b;border-radius:22px;padding:26px;color:white">
+  <div class="gold">MEMBER MANAGEMENT</div><h2>Edit Safrook Member</h2>
+  <input id="editName" placeholder="Member name">
+  <select id="editPosition"><option>Defender</option><option>Midfielder</option><option>Forward</option><option>Goalkeeper</option></select>
+  <input id="editAge" type="number" min="10" max="80" placeholder="Age">
+  <select id="editRating"><option value="1">Rating 1</option><option value="2">Rating 2</option><option value="3">Rating 3</option><option value="4">Rating 4</option></select>
+  <input id="editPin" type="password" inputmode="numeric" maxlength="4" placeholder="4-digit PIN">
+  <label style="display:flex;gap:10px;align-items:center;margin:12px 0"><input id="editActive" type="checkbox" style="width:auto;margin:0"> Active Safrook Member</label>
+  <button class="primary" style="width:100%" onclick="saveMemberEdit()">Save Changes</button>
+  <button class="btn2" style="width:100%;margin-top:8px" onclick="closeMemberEdit()">Cancel</button>
+  <div id="editMemberMsg"></div>
+ </div>
+</div>
+
 <div id="adminLock">
  <div class="lockCard">
   <div class="gold">ADMIN ACCESS</div>
