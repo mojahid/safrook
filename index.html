@@ -822,9 +822,10 @@ function populateMembers(){
  <div class="status" style="margin-bottom:10px">
    <div style="display:flex;justify-content:space-between;gap:12px;align-items:center">
     <div><b>${m.name}</b><div class="muted" style="font-size:13px">${m.position||'Position TBD'} • Age ${ageRangeLabel(m.age)} • Rating ${m.rating||'-'}</div></div>
-    <div style="display:flex;gap:8px">
-<button class="btn2" style="padding:9px 12px" onclick="editMember(${i})">Edit</button><button class="btn2" style="padding:8px 10px" onclick="removeMember(${i})">Remove</button>
-<button class="btn2" style="padding:9px 12px" onclick="resetPin(${i})">Reset PIN</button>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:210px">
+<button class="btn2" style="padding:9px 10px" onclick="editMember(${i})">Edit</button>
+<button class="btn2" style="padding:9px 10px" onclick="removeMember(${i})">Remove</button>
+<button class="btn2" style="padding:9px 10px" onclick="resetPin(${i})">Reset PIN</button>
 </div>
    </div>
  </div>`).join('');
