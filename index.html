@@ -279,7 +279,7 @@ input,select{width:100%;padding:14px;margin:8px 0 14px;border-radius:12px;border
 <input id="announcementTitle" placeholder="Announcement title">
 <textarea id="announcementText" placeholder="Write announcement..." style="width:100%;min-height:90px;padding:14px;margin:8px 0 14px;border-radius:12px;border:1px solid #365b7e;background:#071a31;color:white;font:inherit"></textarea>
 <button class="memberbtn" style="width:100%;padding:15px;border:0;border-radius:14px;font-weight:800" onclick="addAnnouncement()">Publish Announcement</button>
-<div id="announcementAdminMsg"></div>
+<div id="announcementAdminMsg"></div><div id="announcementAdminList" style="margin-top:14px"></div>
 </div>
 
 </div><div id="guestsAdmin" class="adminSection"><div class="choice" style="margin-top:24px">
@@ -513,19 +513,70 @@ function renderAnnouncements(){
   <div style="display:flex;justify-content:space-between;gap:12px"><b>${a.title}</b><span class="muted" style="font-size:12px">${a.date}</span></div>
   <p style="min-height:auto;margin-bottom:0">${a.text}</p>
  </div>`).join(""):'<div class="status">No announcements yet.</div>';
+
+ let adminList=document.getElementById("announcementAdminList");
+ if(adminList) adminList.innerHTML=announcements.length?announcements.map((a,i)=>`
+ <div class="status" style="margin-bottom:10px">
+  <div><b>${a.title}</b><div class="muted" style="font-size:13px;margin-top:4px">${a.text}</div></div>
+  <div style="display:flex;gap:6px;margin-top:10px">
+   <button class="btn2" style="padding:8px 10px" onclick="editAnnouncement(${i})">Edit</button>
+   <button class="btn2" style="padding:8px 10px" onclick="removeAnnouncement(${i})">Remove</button>
+  </div>
+ </div>`).join(""):'<div class="status">No announcements yet.</div>';
+
  let latest=document.getElementById("latestAnnouncement");
- if(latest && announcements.length) latest.textContent=announcements[0].title+" — "+announcements[0].text;
+ if(latest) latest.textContent=announcements.length?announcements[0].title+" — "+announcements[0].text:"No announcements yet.";
 }
-function addAnnouncement(){
+let editingAnnouncementIndex=-1;
+async function addAnnouncement(){
  let t=document.getElementById("announcementTitle").value.trim();
  let x=document.getElementById("announcementText").value.trim();
  if(!t||!x){announcementAdminMsg.innerHTML='<div class="status">Enter a title and announcement.</div>';return}
- announcements.unshift({title:t,text:x,date:"Today"});saveLocal();
+
+ let backup=announcements.map(a=>({...a}));
+ if(editingAnnouncementIndex>=0){
+   announcements[editingAnnouncementIndex]={...announcements[editingAnnouncementIndex],title:t,text:x};
+ }else{
+   announcements.unshift({title:t,text:x,date:"Today"});
+ }
+
+ announcementAdminMsg.innerHTML='<div class="status">Saving announcement...</div>';
+ const saved=await saveLocal();
+ if(!saved){
+   announcements=backup;renderAnnouncements();
+   announcementAdminMsg.innerHTML='<div class="status">⚠ Announcement could not be saved.<br><strong>'+lastSaveError+'</strong></div>';
+   return;
+ }
+
  announcementTitle.value="";announcementText.value="";
- announcementAdminMsg.innerHTML='<div class="status">✓ Announcement published.</div>';
+ editingAnnouncementIndex=-1;
+ const btn=document.querySelector("#newsAdmin .memberbtn");
+ if(btn)btn.textContent="Publish Announcement";
+ announcementAdminMsg.innerHTML='<div class="status">✓ Announcement saved.</div>';
  renderAnnouncements();
 }
-
+function editAnnouncement(i){
+ const a=announcements[i]; if(!a)return;
+ editingAnnouncementIndex=i;
+ announcementTitle.value=a.title;
+ announcementText.value=a.text;
+ const btn=document.querySelector("#newsAdmin .memberbtn");
+ if(btn)btn.textContent="✓ Save Changes";
+ announcementAdminMsg.innerHTML='<div class="status">Editing '+a.title+'.</div>';
+}
+async function removeAnnouncement(i){
+ const a=announcements[i]; if(!a)return;
+ if(!confirm("Remove announcement: "+a.title+"?"))return;
+ const backup=announcements.map(x=>({...x}));
+ announcements.splice(i,1);renderAnnouncements();
+ announcementAdminMsg.innerHTML='<div class="status">Removing announcement...</div>';
+ if(await saveLocal()){
+   announcementAdminMsg.innerHTML='<div class="status">✓ Announcement removed.</div>';
+ }else{
+   announcements=backup;renderAnnouncements();
+   announcementAdminMsg.innerHTML='<div class="status">⚠ Announcement could not be removed.<br><strong>'+lastSaveError+'</strong></div>';
+ }
+}
 
 
 
@@ -659,6 +710,34 @@ function ageRangeLabel(age){
 
 let editingMemberIndex = -1;
 
+async function removeMember(i){
+ const member=safrookMembers[i];
+ if(!member)return;
+ if(!confirm("Remove "+member.name+" from Safrook Members?"))return;
+
+ const backupMembers=safrookMembers.map(m=>({...m}));
+ const backupAvailability={...memberAvailability};
+
+ safrookMembers.splice(i,1);
+ delete memberAvailability[member.name];
+ state.totalMembers=safrookMembers.filter(m=>m.active!==false).length;
+ state.unavailableMembers=Object.values(memberAvailability).filter(v=>v===false).length;
+ syncGuests();populateMembers();render();renderGuestAdmin();
+
+ adminMsg.innerHTML='<div class="status">Removing '+member.name+'...</div>';
+ const saved=await saveLocal();
+ if(saved){
+   adminMsg.innerHTML='<div class="status">✓ '+member.name+' removed from Safrook Members and saved.</div>';
+ }else{
+   safrookMembers=backupMembers;
+   memberAvailability=backupAvailability;
+   state.totalMembers=safrookMembers.filter(m=>m.active!==false).length;
+   state.unavailableMembers=Object.values(memberAvailability).filter(v=>v===false).length;
+   syncGuests();populateMembers();render();renderGuestAdmin();
+   adminMsg.innerHTML='<div class="status">⚠ Member could not be removed.<br><strong>'+lastSaveError+'</strong></div>';
+ }
+}
+
 function editMember(i) {
   const m = safrookMembers[i];
   if (!m) return;
@@ -744,7 +823,7 @@ function populateMembers(){
    <div style="display:flex;justify-content:space-between;gap:12px;align-items:center">
     <div><b>${m.name}</b><div class="muted" style="font-size:13px">${m.position||'Position TBD'} • Age ${ageRangeLabel(m.age)} • Rating ${m.rating||'-'}</div></div>
     <div style="display:flex;gap:8px">
-<button class="btn2" style="padding:9px 12px" onclick="editMember(${i})">Edit</button>
+<button class="btn2" style="padding:9px 12px" onclick="editMember(${i})">Edit</button><button class="btn2" style="padding:8px 10px" onclick="removeMember(${i})">Remove</button>
 <button class="btn2" style="padding:9px 12px" onclick="resetPin(${i})">Reset PIN</button>
 </div>
    </div>
