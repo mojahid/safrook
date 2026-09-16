@@ -360,7 +360,7 @@ if(m && p===m.pin){
 }}
 async function setAvailability(canPlay){
  let name=document.getElementById('memberName').value;
- let pin=document.getElementById('memberPin').value.trim();
+ let pin=document.getElementById('pin').value.trim();
  let msg=document.getElementById('availabilityMsg');
  msg.innerHTML='<div class="status">Saving your status...</div>';
  let r=await publicAction("/api/member-status",{name,pin,canPlay});
