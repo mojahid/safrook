@@ -294,7 +294,14 @@ input,select{width:100%;padding:14px;margin:8px 0 14px;border-radius:12px;border
 <select id="newMemberPosition">
 <option value="">Position</option><option>Goalkeeper</option><option>Defender</option><option>Midfielder</option><option>Forward</option>
 </select>
-<input id="newMemberAge" type="number" placeholder="Age">
+<select id="newMemberAge">
+<option value="">Age Range</option>
+<option value="25">20–29</option>
+<option value="35">30–39</option>
+<option value="45">40–49</option>
+<option value="55">50–59</option>
+<option value="65">60+</option>
+</select>
 <select id="newMemberRating"><option value="">Rating</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select>
 <input id="newMemberPin" maxlength="4" inputmode="numeric" placeholder="4-digit PIN">
 <button class="memberbtn" onclick="addMember()">+ Add Safrook Member</button>
@@ -548,7 +555,7 @@ function addAnnouncement(){
 
 let adminToken=sessionStorage.getItem("safrook_admin_token")||"";
 function openAdminLogin(){
- if(adminToken){ show("adminScreen"); return; }
+ if(adminToken){ show("admin"); return; }
  adminPinInput.value="";adminLoginMsg.innerHTML="";adminLock.style.display="flex";adminPinInput.focus();
 }
 function closeAdminLogin(){adminLock.style.display="none"}
@@ -559,7 +566,7 @@ async function verifyAdmin(){
   let r=await fetch("/api/admin-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({pin})});
   let x=await r.json();
   if(!r.ok||!x.token){adminLoginMsg.innerHTML='<div class="status">Incorrect Admin PIN.</div>';return}
-  adminToken=x.token;sessionStorage.setItem("safrook_admin_token",adminToken);closeAdminLogin();show("adminScreen");
+  adminToken=x.token;sessionStorage.setItem("safrook_admin_token",adminToken);closeAdminLogin();show("admin");
  }catch(e){adminLoginMsg.innerHTML='<div class="status">Admin login requires the deployed Safrook backend.</div>'}
 }
 function adminLogout(){adminToken="";sessionStorage.removeItem("safrook_admin_token");show("home")}
@@ -634,6 +641,17 @@ function renderGame(){
 }
 
 
+
+function ageRangeLabel(age){
+  age=Number(age)||0;
+  if(age>=60)return "60+";
+  if(age>=50)return "50–59";
+  if(age>=40)return "40–49";
+  if(age>=30)return "30–39";
+  if(age>=20)return "20–29";
+  return "—";
+}
+
 let editingMemberIndex = -1;
 
 function editMember(i) {
@@ -643,7 +661,12 @@ function editMember(i) {
   editingMemberIndex = i;
   document.getElementById("newMemberName").value = m.name || "";
   document.getElementById("newMemberPosition").value = m.position || "";
-  document.getElementById("newMemberAge").value = m.age || "";
+  document.getElementById("newMemberAge").value =
+    m.age >= 60 ? "65" :
+    m.age >= 50 ? "55" :
+    m.age >= 40 ? "45" :
+    m.age >= 30 ? "35" :
+    m.age >= 20 ? "25" : "";
   document.getElementById("newMemberRating").value = m.rating || "";
   document.getElementById("newMemberPin").value = m.pin || "";
 
@@ -711,7 +734,7 @@ function populateMembers(){
  if(list) list.innerHTML=safrookMembers.map((m,i)=>`
  <div class="status" style="margin-bottom:10px">
    <div style="display:flex;justify-content:space-between;gap:12px;align-items:center">
-    <div><b>${m.name}</b><div class="muted" style="font-size:13px">${m.position||'Position TBD'} • Age ${m.age||'-'} • Rating ${m.rating||'-'}</div></div>
+    <div><b>${m.name}</b><div class="muted" style="font-size:13px">${m.position||'Position TBD'} • Age ${ageRangeLabel(m.age)} • Rating ${m.rating||'-'}</div></div>
     <div style="display:flex;gap:8px">
 <button class="btn2" style="padding:9px 12px" onclick="editMember(${i})">Edit</button>
 <button class="btn2" style="padding:9px 12px" onclick="resetPin(${i})">Reset PIN</button>
