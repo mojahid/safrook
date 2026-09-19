@@ -268,11 +268,12 @@ input,select{width:100%;padding:14px;margin:8px 0 14px;border-radius:12px;border
 <h2>⚽ Team Selection</h2>
 <p class="muted">Confirmed players only. Add optional conditions, then balance by rating, position and age.</p>
 <div class="status" style="margin:14px 0"><b id="confirmedPlayerCount">0 confirmed players</b></div>
+<div style="margin:18px 0"><label for="teamCount">Number of teams</label><input id="teamCount" type="number" min="2" max="26" value="2" style="max-width:180px" onchange="refreshTeamAdmin()"><div id="teamCountHint" class="muted"></div></div>
 <h3>Conditions</h3>
 <div class="reggrid">
 <select id="conditionP1"><option value="">Player 1</option></select>
-<select id="conditionRule"><option value="separate">Must be on different teams</option><option value="together">Must be on same team</option><option value="teamA">Force Player 1 to Team A</option><option value="teamB">Force Player 1 to Team B</option></select>
-<select id="conditionP2"><option value="">Player 2</option></select>
+<select id="conditionRule"><option value="separate">Must be on different teams</option><option value="together">Must be on same team</option><option value="force">Force Player 1 to selected team</option></select>
+<select id="conditionP2"><option value="">Player 2</option></select><select id="conditionTarget"><option value="0">Team A</option><option value="1">Team B</option></select>
 <button class="btn2" onclick="addTeamCondition()">+ Add Condition</button>
 </div>
 <div id="conditionMsg"></div><div id="conditionList" style="margin-top:10px"></div>
@@ -282,11 +283,11 @@ input,select{width:100%;padding:14px;margin:8px 0 14px;border-radius:12px;border
 <label style="display:flex;gap:10px;align-items:center;margin:8px 0"><input id="balanceAge" type="checkbox" checked style="width:auto;margin:0"> Balance by age</label>
 </div>
 <button class="primary" style="width:100%;margin:18px 0" onclick="generateTeams()">⚽ Generate Balanced Teams</button>
-<div class="reggrid"><div class="choice"><h2>🔵 Team A</h2><div id="teamA"></div></div><div class="choice"><h2>🟡 Team B</h2><div id="teamB"></div></div></div>
+<div id="generatedTeams" class="reggrid"></div>
 <div id="teamSummary" class="status" style="margin-top:16px"></div>
 <div class="actions" style="margin-top:14px"><button class="btn2" onclick="generateTeams()">↻ Regenerate</button><button class="primary" onclick="publishTeams()">✓ Publish Teams</button><button class="btn2" onclick="copyTeams()">Copy for WhatsApp</button></div>
 <h3 style="margin:24px 0 8px">Import Team Selection</h3>
-<p class="muted">Paste Team A / الفريق الأول and Team B / الفريق الثاني lists, then review before publishing.</p>
+<p class="muted">Paste Team A, Team B, Team C… or الفريق الأول، الثاني، الثالث… and review before publishing.</p>
 <textarea id="teamImportText" placeholder="🔵 Team A&#10;1. Player Name&#10;&#10;🟡 Team B&#10;1. Player Name" style="width:100%;min-height:160px;padding:14px;margin:8px 0 12px;border-radius:12px;border:1px solid #365b7e;background:#071a31;color:white;font:inherit"></textarea>
 <button class="btn2" style="width:100%" onclick="importTeams()">Import & Review</button>
 <div id="publishMsg"></div>
@@ -440,56 +441,70 @@ function renderGuestAdmin(){
 }
 
 function activeConfirmedPlayers(){
- let members=safrookMembers.filter(m=>m.active!==false&&memberAvailability[m.name]!==false&&memberAvailability[m.name]!=="waiting").map(m=>({name:m.name,position:m.position||"Unknown",age:Number(m.age)||35,rating:Number(m.rating)||2,type:"Safrook Member"}));
- let guests=guestRecords.filter(g=>g.status==="confirmed").map(g=>({name:g.name,position:"Unknown",age:35,rating:2,type:"Guest"}));
+ const members=safrookMembers.filter(m=>m.active!==false && memberAvailability[m.name]!==false && memberAvailability[m.name]!=="waiting")
+ .map(m=>({name:m.name,position:m.position||"Unknown",age:Number(m.age)||35,rating:Number(m.rating)||2,type:"Safrook Member"}));
+ const guests=guestRecords.filter(g=>g.status==="confirmed")
+ .map(g=>({name:g.name,position:g.position||"Unknown",age:Number(g.age)||35,rating:Number(g.rating)||2,type:"Guest"}));
  return members.concat(guests);
 }
-let generatedA=[],generatedB=[],teamsPublished=false,teamConditions=[];
+let generatedTeams=[],teamsPublished=false,teamConditions=[],configuredTeamCount=2;
+const teamColors=["🔵","🟡","🔴","🟢","🟣","🟠","⚪","⚫","🟤"];
+function teamLabel(i){return "Team "+String.fromCharCode(65+i)}
+function teamTitle(i){return (teamColors[i%teamColors.length])+" "+teamLabel(i)}
+function teamNumber(){return Math.max(2,Math.min(26,Number(document.getElementById("teamCount")?.value)||configuredTeamCount||2))}
 function normPos(p){p=(p||"").toLowerCase();if(p.includes("def"))return"Defender";if(p.includes("mid"))return"Midfielder";if(p.includes("for")||p.includes("attack"))return"Forward";if(p.includes("goal"))return"Goalkeeper";return"Unknown"}
+function porder(p){return({Goalkeeper:0,Defender:1,Midfielder:2,Forward:3,Unknown:4})[normPos(p.position)]??4}
 function refreshTeamAdmin(){
- let ps=activeConfirmedPlayers(),c=document.getElementById("confirmedPlayerCount");if(c)c.textContent=ps.length+" confirmed players";
- ["conditionP1","conditionP2"].forEach((id,k)=>{let e=document.getElementById(id);if(!e)return;let v=e.value;e.innerHTML='<option value="">Player '+(k+1)+'</option>'+ps.map(p=>`<option>${p.name}</option>`).join("");e.value=v});
+ const ps=activeConfirmedPlayers(),n=teamNumber(),c=document.getElementById("confirmedPlayerCount");if(c)c.textContent=ps.length+" confirmed players";
+ const hint=document.getElementById("teamCountHint");if(hint)hint.textContent=ps.length>=n?`${ps.length} players across ${n} teams: ${Math.floor(ps.length/n)}–${Math.ceil(ps.length/n)} per team.`:`Add confirmed players: ${ps.length} players cannot fill ${n} teams.`;
+ ["conditionP1","conditionP2"].forEach((id,k)=>{const e=document.getElementById(id);if(!e)return;const v=e.value;e.replaceChildren(new Option("Player "+(k+1),""),...ps.map(p=>new Option(p.name,p.name)));e.value=v});
+ const target=document.getElementById("conditionTarget");if(target){const v=target.value;target.replaceChildren(...Array.from({length:n},(_,i)=>new Option(teamLabel(i),String(i))));target.value=v;}
  renderConditions();drawGeneratedTeams();
 }
 function addTeamCondition(){
- let p1=conditionP1.value,r=conditionRule.value,p2=conditionP2.value;
- if(!p1){conditionMsg.innerHTML='<div class="status">Select Player 1.</div>';return}
- if((r==="separate"||r==="together")&&(!p2||p1===p2)){conditionMsg.innerHTML='<div class="status">Select a different Player 2.</div>';return}
- teamConditions.push({p1,rule:r,p2:(r==="separate"||r==="together")?p2:""});conditionMsg.innerHTML='<div class="status">✓ Condition added.</div>';renderConditions();saveLocal();
+ const p1=conditionP1.value,rule=conditionRule.value,p2=conditionP2.value,target=Number(conditionTarget.value);
+ if(!p1){conditionMsg.textContent="Select Player 1.";return}
+ if(rule!=="force"&&(!p2||p1===p2)){conditionMsg.textContent="Select a different Player 2.";return}
+ teamConditions.push({p1,rule,p2:rule==="force"?"":p2,target});conditionMsg.textContent="✓ Condition added.";renderConditions();saveLocal();
 }
 function removeTeamCondition(i){teamConditions.splice(i,1);renderConditions();saveLocal()}
-function conditionText(c){return c.rule==="separate"?`${c.p1} — separate from — ${c.p2}`:c.rule==="together"?`${c.p1} — together with — ${c.p2}`:c.rule==="teamA"?`${c.p1} — Team A`:`${c.p1} — Team B`}
-function renderConditions(){let e=document.getElementById("conditionList");if(!e)return;e.innerHTML=teamConditions.length?teamConditions.map((c,i)=>`<div class="status" style="margin-bottom:7px;display:flex;justify-content:space-between;gap:8px;align-items:center"><span>${conditionText(c)}</span><button class="btn2" style="padding:7px 10px" onclick="removeTeamCondition(${i})">Remove</button></div>`).join(""):'<div class="muted">No conditions added.</div>'}
-function validConditions(A,B){
- let a=new Set(A.map(p=>p.name)),b=new Set(B.map(p=>p.name));
- return teamConditions.every(c=>c.rule==="separate"?!((a.has(c.p1)&&a.has(c.p2))||(b.has(c.p1)&&b.has(c.p2))):c.rule==="together"?((a.has(c.p1)&&a.has(c.p2))||(b.has(c.p1)&&b.has(c.p2))):c.rule==="teamA"?a.has(c.p1):b.has(c.p1));
-}
+function conditionText(c){return c.rule==="separate"?`${c.p1} — separate from — ${c.p2}`:c.rule==="together"?`${c.p1} — together with — ${c.p2}`:`${c.p1} — ${teamLabel(Number(c.target??(c.rule==="teamB"?1:0)))}`}
+function renderConditions(){const e=document.getElementById("conditionList");if(!e)return;e.replaceChildren();if(!teamConditions.length){e.textContent="No conditions added.";return}teamConditions.forEach((c,i)=>{const row=document.createElement("div"),label=document.createElement("span"),btn=document.createElement("button");row.className="status";row.style.cssText="margin-bottom:7px;display:flex;justify-content:space-between;gap:8px;align-items:center";label.textContent=conditionText(c);btn.className="btn2";btn.textContent="Remove";btn.onclick=()=>removeTeamCondition(i);row.append(label,btn);e.append(row)})}
+function validConditions(teams){const where=new Map();teams.forEach((arr,i)=>arr.forEach(p=>where.set(p.name,i)));return teamConditions.every(c=>{if(!where.has(c.p1))return false;if(c.rule==="separate")return where.has(c.p2)&&where.get(c.p1)!==where.get(c.p2);if(c.rule==="together")return where.has(c.p2)&&where.get(c.p1)===where.get(c.p2);return where.get(c.p1)===Number(c.target??(c.rule==="teamB"?1:0))})}
 function metrics(x){return{rating:x.reduce((s,p)=>s+(+p.rating||2),0),age:x.length?x.reduce((s,p)=>s+(+p.age||35),0)/x.length:0,pos:["Goalkeeper","Defender","Midfielder","Forward"].reduce((o,k)=>(o[k]=x.filter(p=>normPos(p.position)===k).length,o),{})}}
-function cost(A,B){let a=metrics(A),b=metrics(B),v=Math.abs(A.length-B.length)*100;if(balanceRating?.checked)v+=Math.abs(a.rating-b.rating)*12;if(balanceAge?.checked)v+=Math.abs(a.age-b.age)*.7;if(balancePosition?.checked)["Goalkeeper","Defender","Midfielder","Forward"].forEach(k=>v+=Math.abs(a.pos[k]-b.pos[k])*7);return v}
+function balanceCost(teams){const ms=teams.map(metrics),n=teams.length;let score=0;const spread=values=>Math.max(...values)-Math.min(...values);if(balanceRating.checked)score+=spread(ms.map(m=>m.rating))*12;if(balanceAge.checked)score+=spread(ms.map(m=>m.age))*.7;if(balancePosition.checked)["Goalkeeper","Defender","Midfielder","Forward"].forEach(k=>score+=spread(ms.map(m=>m.pos[k]))*7);return score}
 function shuffle(x){x=[...x];for(let i=x.length-1;i;i--){let j=Math.floor(Math.random()*(i+1));[x[i],x[j]]=[x[j],x[i]]}return x}
 function generateTeams(){
- let ps=activeConfirmedPlayers();if(ps.length<2){teamSummary.innerHTML="Not enough confirmed players.";return}
- let best=null,bc=Infinity;
- for(let n=0;n<6000;n++){let A=[],B=[];shuffle(ps).forEach(p=>{if(A.length<Math.ceil(ps.length/2)&&B.length<Math.floor(ps.length/2))(cost(A.concat(p),B)<=cost(A,B.concat(p))?A:B).push(p);else(A.length<Math.ceil(ps.length/2)?A:B).push(p)});if(!validConditions(A,B))continue;let c=cost(A,B);if(c<bc){bc=c;best={A:[...A],B:[...B]}}}
- if(!best){teamSummary.innerHTML="⚠ No valid combination satisfies all conditions.";return}
- generatedA=best.A;generatedB=best.B;teamsPublished=false;drawGeneratedTeams();saveLocal();let a=metrics(generatedA),b=metrics(generatedB);teamSummary.innerHTML=`✓ ${ps.length} confirmed players • Rating ${a.rating} vs ${b.rating} • Avg age ${a.age.toFixed(0)} vs ${b.age.toFixed(0)} • ${teamConditions.length} condition(s)`;
+ const ps=activeConfirmedPlayers(),n=teamNumber();configuredTeamCount=n;
+ if(ps.length<n){teamSummary.textContent=`Need at least ${n} confirmed players to create ${n} nonempty teams.`;return}
+ const targets=Array.from({length:n},(_,i)=>Math.floor(ps.length/n)+(i<ps.length%n?1:0));let best=null,bc=Infinity;
+ for(let attempt=0;attempt<Math.min(15000,Math.max(5000,ps.length*250));attempt++){
+  const teams=Array.from({length:n},()=>[]),order=shuffle(ps);
+  // Randomized balanced-capacity assignment; mandatory constraints are checked before accepting.
+  order.forEach(p=>{const eligible=teams.map((t,i)=>({i,c:balanceCost(teams.map((a,j)=>j===i?a.concat(p):a))})).filter(x=>teams[x.i].length<targets[x.i]);eligible.sort((a,b)=>a.c-b.c);const choice=eligible[Math.floor(Math.random()*Math.min(3,eligible.length))];if(choice)teams[choice.i].push(p)});
+  if(!validConditions(teams))continue;const c=balanceCost(teams);if(c<bc){best=teams.map(t=>[...t]);bc=c}
+ }
+ if(!best){teamSummary.textContent="⚠ Could not satisfy all conditions. Check conflicting rules or change team count.";return}
+ generatedTeams=best;teamsPublished=false;drawGeneratedTeams();saveLocal();teamSummary.textContent=`✓ ${ps.length} confirmed players • ${n} teams • Ratings: ${best.map(t=>metrics(t).rating).join(" / ")} • ${teamConditions.length} condition(s)`;
 }
-function porder(p){return({Goalkeeper:0,Defender:1,Midfielder:2,Forward:3,Unknown:4})[normPos(p.position)]??4}
-function drawGeneratedTeams(){
- function draw(id,x){let e=document.getElementById(id);if(!e)return;e.innerHTML=x.length?[...x].sort((a,b)=>porder(a)-porder(b)).map((p,i)=>`<div class="status" style="margin-bottom:8px"><b>${i+1}. ${p.name}</b><div class="muted" style="font-size:12px">${p.position||"Unknown"}${p.type==="Safrook Member"?" • Rating "+p.rating:""}</div></div>`).join(""):'<div class="status">Generate teams to begin.</div>'}draw("teamA",generatedA);draw("teamB",generatedB);renderPublicTeams()
-}
-async function publishTeams(){if(!generatedA.length||!generatedB.length){publishMsg.innerHTML='<div class="status">Generate or import teams first.</div>';return}teamsPublished=true;let ok=await saveLocal();if(ok){publishMsg.innerHTML='<div class="status">✓ Teams published.</div>';renderPublicTeams()}else{teamsPublished=false;publishMsg.innerHTML='<div class="status">⚠ Could not publish teams.</div>'}}
-function teamShareText(){let line=x=>[...x].sort((a,b)=>porder(a)-porder(b)).map((p,i)=>(i+1)+". "+p.name).join("\n");return `⚽ SAFROOK – ${game.title}\n\n🔵 الفريق الأول\n${line(generatedA)}\n\n🟡 الفريق الثاني\n${line(generatedB)}\n\n⚽ Play • Together • Always Back`}
-async function copyTeams(){if(!generatedA.length||!generatedB.length){publishMsg.innerHTML='<div class="status">Generate or import teams first.</div>';return}let t=teamShareText();try{await navigator.clipboard.writeText(t);publishMsg.innerHTML='<div class="status">✓ Copied. Paste into WhatsApp.</div>'}catch(e){window.prompt("Copy team list:",t)}}
+function makeTeamCard(i,arr,admin){const card=document.createElement("div"),heading=document.createElement("h2");card.className="choice";heading.textContent=`${teamTitle(i)} — ${arr.length} players`;card.append(heading);[...arr].sort((a,b)=>porder(a)-porder(b)).forEach((p,j)=>{const row=document.createElement("div"),name=document.createElement("b"),info=document.createElement("div");row.className="status";row.style.marginBottom="8px";name.textContent=`${j+1}. ${p.name}`;info.className="muted";info.style.fontSize="12px";info.textContent=(p.position||"Unknown")+(admin&&p.type==="Safrook Member"?" • Rating "+p.rating:"");row.append(name,info);card.append(row)});return card}
+function drawGeneratedTeams(){const e=document.getElementById("generatedTeams");if(!e)return;e.replaceChildren();if(!generatedTeams.length){e.textContent="Generate teams to begin.";return}generatedTeams.forEach((t,i)=>e.append(makeTeamCard(i,t,true)));renderPublicTeams()}
+async function publishTeams(){if(generatedTeams.length<2||generatedTeams.some(t=>!t.length)){publishMsg.textContent="Generate or import teams first.";return}if(!validConditions(generatedTeams)){publishMsg.textContent="⚠ Current teams do not satisfy the configured conditions.";return}const prev=teamsPublished;teamsPublished=true;const ok=await saveLocal();if(ok){publishMsg.textContent="✓ Teams published.";renderPublicTeams()}else{teamsPublished=prev;publishMsg.textContent="⚠ Could not publish teams: "+lastSaveError}}
+function teamShareText(){const arabic=["الأول","الثاني","الثالث","الرابع","الخامس","السادس","السابع","الثامن","التاسع","العاشر"];return `⚽ SAFROOK – ${game.title}\n\n`+generatedTeams.map((t,i)=>`${teamColors[i%teamColors.length]} الفريق ${arabic[i]||teamLabel(i)} (${teamLabel(i)})\n`+[...t].sort((a,b)=>porder(a)-porder(b)).map((p,j)=>`${j+1}. ${p.name}`).join("\n")).join("\n\n")+"\n\n⚽ Play • Together • Always Back"}
+async function copyTeams(){if(!generatedTeams.length){publishMsg.textContent="Generate or import teams first.";return}const t=teamShareText();try{await navigator.clipboard.writeText(t);publishMsg.textContent="✓ Copied. Paste into WhatsApp."}catch(e){window.prompt("Copy team list:",t)}}
 function shareTeams(){copyTeams()}
 function importTeams(){
- let raw=teamImportText.value.trim(),side="",A=[],B=[];if(!raw){publishMsg.innerHTML='<div class="status">Paste the team selection first.</div>';return}
- raw.split(/\r?\n/).forEach(l=>{if(/team\s*a|الفريق\s*(الأول|الاول)/i.test(l)){side="A";return}if(/team\s*b|الفريق\s*الثاني/i.test(l)){side="B";return}let n=l.replace(/^[\s🔵🟡⚽\-–—]*(?:\d+[\.\)\-:]?\s*)?/u,"").trim();if(n&&side)(side==="A"?A:B).push(n)});
- let ps=activeConfirmedPlayers(),map=new Map(ps.map(p=>[p.name.trim().toLowerCase(),p])),missing=[];let cv=x=>x.map(n=>{let p=map.get(n.toLowerCase());if(!p)missing.push(n);return p}).filter(Boolean);let aa=cv(A),bb=cv(B);
- if(!aa.length||!bb.length){publishMsg.innerHTML='<div class="status">⚠ Could not find both teams. Check headings and names.</div>';return}
- generatedA=aa;generatedB=bb;teamsPublished=false;drawGeneratedTeams();saveLocal();publishMsg.innerHTML=`<div class="status">✓ Imported ${aa.length+bb.length} players for review.${missing.length?" Unmatched: "+missing.join(", "):""}</div>`;
+ const raw=teamImportText.value.trim();if(!raw){publishMsg.textContent="Paste the team selection first.";return}
+ const ar=["الأول","الاول","الثاني","الثالث","الرابع","الخامس","السادس","السابع","الثامن","التاسع","العاشر"];
+ const lines=raw.split(/\r?\n/),groups=new Map();let side=-1;
+ lines.forEach(line=>{const en=line.match(/\bteam\s*([a-z])\b/i),arab=line.match(/الفريق\s+(الأول|الاول|الثاني|الثالث|الرابع|الخامس|السادس|السابع|الثامن|التاسع|العاشر)/);if(en){side=en[1].toUpperCase().charCodeAt(0)-65;return}if(arab){side=({"الأول":0,"الاول":0,"الثاني":1,"الثالث":2,"الرابع":3,"الخامس":4,"السادس":5,"السابع":6,"الثامن":7,"التاسع":8,"العاشر":9})[arab[1]];return}const name=line.replace(/^[\s🔵🟡🔴🟢🟣🟠⚪⚫🟤⚽\-–—]*(?:[0-9٠-٩]+[.\)\-:]?\s*)?/u,"").trim();if(name&&side>=0){if(!groups.has(side))groups.set(side,[]);groups.get(side).push(name)}});
+ const keys=[...groups.keys()].sort((a,b)=>a-b);if(keys.length<2||keys.some((k,i)=>k!==i)){publishMsg.textContent="⚠ Use consecutive headings starting with Team A / الفريق الأول.";return}
+ const ps=activeConfirmedPlayers(),byName=new Map(ps.map(p=>[p.name.trim().toLowerCase(),p])),missing=[],seen=new Set(),teams=keys.map(k=>groups.get(k).map(n=>{const p=byName.get(n.toLowerCase());if(!p)missing.push(n);else if(seen.has(p.name))missing.push(n+" (duplicate)");else seen.add(p.name);return p}).filter(Boolean));
+ if(missing.length||teams.some(t=>!t.length)){publishMsg.textContent="⚠ Fix unmatched/duplicate players: "+missing.join(", ");return}
+ if(!validConditions(teams)){publishMsg.textContent="⚠ Imported teams conflict with current conditions.";return}
+ generatedTeams=teams;configuredTeamCount=teams.length;teamCount.value=String(teams.length);teamsPublished=false;drawGeneratedTeams();saveLocal();publishMsg.textContent=`✓ Imported ${seen.size} players into ${teams.length} teams. Review before publishing.`;
 }
-function renderPublicTeams(){let e=document.getElementById("publicTeams");if(!e)return;if(!teamsPublished||!generatedA.length||!generatedB.length){e.innerHTML='<div class="status">Teams have not been published yet.</div>';return}let card=(t,x)=>`<div class="choice"><h2>${t}</h2>${[...x].sort((a,b)=>porder(a)-porder(b)).map((p,i)=>`<div class="status" style="margin-bottom:7px"><b>${i+1}. ${p.name}</b><div class="muted" style="font-size:12px">${p.position||""}</div></div>`).join("")}</div>`;e.innerHTML=`<div class="reggrid">${card("🔵 Team A",generatedA)}${card("🟡 Team B",generatedB)}</div>`}
+function renderPublicTeams(){const e=document.getElementById("publicTeams");if(!e)return;e.replaceChildren();if(!teamsPublished||generatedTeams.length<2){e.textContent="Teams have not been published yet.";return}const grid=document.createElement("div");grid.className="reggrid";generatedTeams.forEach((t,i)=>grid.append(makeTeamCard(i,t,false)));e.append(grid)}
 
 
 
@@ -605,7 +620,7 @@ function adminLogout(){adminToken="";sessionStorage.removeItem("safrook_admin_to
 
 function snapshot(){
  return {game,safrookMembers,memberAvailability,guestRecords,announcements,games,
-         teams:{a:generatedA,b:generatedB,published:teamsPublished,conditions:teamConditions}};
+         teams:{groups:generatedTeams,published:teamsPublished,conditions:teamConditions,count:configuredTeamCount}};
 }
 let lastSaveError="";
 async function saveLocal(){
@@ -644,7 +659,7 @@ function applyState(x){
  if(x.guestRecords)guestRecords=x.guestRecords;
  if(x.announcements)announcements=x.announcements;
  if(x.games)games=x.games;
- if(x.teams){generatedA=x.teams.a||[];generatedB=x.teams.b||[];teamsPublished=!!x.teams.published;teamConditions=x.teams.conditions||[]}
+ if(x.teams){generatedTeams=x.teams.groups||[x.teams.a||[],x.teams.b||[]].filter(t=>t.length);teamsPublished=!!x.teams.published;teamConditions=x.teams.conditions||[];configuredTeamCount=x.teams.count||generatedTeams.length||2;const tc=document.getElementById("teamCount");if(tc)tc.value=configuredTeamCount}
  state.capacity=game.capacity;
  state.totalMembers=safrookMembers.filter(m=>m.active!==false).length;
  state.unavailableMembers=Object.values(memberAvailability).filter(v=>v===false).length;
@@ -681,11 +696,13 @@ function loadGameForm(){
  gLocation.value=game.location;gField.value=game.field;gCapacity.value=game.capacity;gFee.value=game.guestFee;gOpen.checked=game.registrationOpen;
 }
 async function saveGame(){
+ const oldGameKey=game.date+"|"+game.start+"|"+game.location;
  game.title=gTitle.value.trim()||"Safrook Weekly Game";
  game.date=gDate.value;game.start=gStart.value;game.end=gEnd.value;
  game.location=gLocation.value.trim()||"TBD";game.field=gField.value.trim()||"";
  game.capacity=Math.max(1,parseInt(gCapacity.value)||22);
  game.guestFee=Math.max(0,parseFloat(gFee.value)||0);game.registrationOpen=gOpen.checked;
+ if(oldGameKey!==game.date+"|"+game.start+"|"+game.location){generatedTeams=[];teamsPublished=false;teamConditions=[];}
  state.capacity=game.capacity;
  render();
  gameAdminMsg.innerHTML='<div class="status">Saving game...</div>';
