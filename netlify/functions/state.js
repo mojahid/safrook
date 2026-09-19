@@ -1,3 +1,4 @@
+import {reconcile} from "./registration-rules.js";
 
 import { getDatabase } from "@netlify/database";
 import crypto from "node:crypto";
@@ -24,6 +25,7 @@ export default async (req) => {
     const token=(req.headers.get("authorization")||"").replace(/^Bearer\s+/,"");
     if(!validToken(token)) return Response.json({error:"Admin authorization required"},{status:401});
     const payload = await req.json();
+    reconcile(payload);
     await db.sql`
       INSERT INTO app_state (id, payload, updated_at)
       VALUES (${"safrook"}, ${JSON.stringify(payload)}::jsonb, NOW())
