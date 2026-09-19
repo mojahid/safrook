@@ -161,10 +161,11 @@ input,select{width:100%;padding:14px;margin:8px 0 14px;border-radius:12px;border
 <div class="countrow"><div class="count"><span id="total">15</span> <span>/ <span id="capacity">22</span> players</span></div><div class="remaining"><span id="spots">7</span> spots remaining</div></div>
 <div class="bar"><div id="fill" class="fill" style="width:68%"></div></div>
 <div class="stats">
-<div class="stat"><strong id="members">15</strong><div>👥 Safrook Members</div></div>
-<div class="stat"><strong id="guests">0</strong><div>👥 Guests</div></div>
-<div class="stat"><strong id="waiting">0</strong><div>⌛ Waiting</div></div>
+<div class="stat" role="button" tabindex="0" onclick="showAttendance()" style="cursor:pointer"><strong id="members">15</strong><div>👥 Safrook Members</div></div>
+<div class="stat" role="button" tabindex="0" onclick="showAttendance()" style="cursor:pointer"><strong id="guests">0</strong><div>👥 Guests</div></div>
+<div class="stat" role="button" tabindex="0" onclick="showAttendance()" style="cursor:pointer"><strong id="waiting">0</strong><div>⌛ Waiting</div></div>
 </div>
+<div id="attendanceDetails" class="status hidden" style="margin-top:14px"></div>
 <div class="actions"><button class="primary" onclick="show('registration')">👤+ &nbsp; Register to Play</button><button class="btn2">ⓘ &nbsp; Game Details</button></div>
 </div>
 <div class="home-links">
@@ -257,12 +258,14 @@ input,select{width:100%;padding:14px;margin:8px 0 14px;border-radius:12px;border
 <div><label>Field</label><input id="gField"></div>
 <div><label>Player capacity</label><input id="gCapacity" type="number" min="1"></div>
 <div><label>Guest fee ($)</label><input id="gFee" type="number" min="0"></div>
+<div><label>Member priority deadline (hours before kickoff)</label><input id="gPriority" type="number" min="0" max="168" step="0.5" value="2"></div>
 </div>
 <label style="display:flex;align-items:center;gap:10px;margin:10px 0 16px">
 <input id="gOpen" type="checkbox" style="width:auto;margin:0"> Registration Open
 </label>
 <button class="memberbtn" style="width:100%;padding:15px;border:0;border-radius:14px;font-weight:800" onclick="saveGame()">Save Game</button>
 <div id="gameAdminMsg"></div>
+<div style="margin-top:18px"><button class="btn2" onclick="createNextGame()">↻ Create Next Game & Archive Current</button><p class="muted">Automatically creates the next weekly game when Admin opens this page after the match ends. This button also allows a manual rollover.</p></div>
 </div>
 </div><div id="teamsAdmin" class="adminSection"><div class="choice" style="margin-top:24px">
 <h2>⚽ Team Selection</h2>
@@ -342,11 +345,13 @@ let safrookMembers=[
 {name:"مجاهد",position:"Midfielder",age:40,rating:2,pin:"1004",active:true},
 {name:"حليم",position:"Forward",age:50,rating:1,pin:"1005",active:true}
 ];
-let game={title:"Safrook Weekly Game",date:"2026-09-19",start:"21:00",end:"22:00",location:"nZone",field:"Indoor Field",capacity:22,guestFee:15,registrationOpen:true};
+let game={title:"Safrook Weekly Game",date:"2026-09-19",start:"21:00",end:"22:00",location:"nZone",field:"Indoor Field",capacity:22,guestFee:15,priorityHours:2,registrationOpen:true};
 let state={capacity:game.capacity,totalMembers:safrookMembers.length,unavailableMembers:0,guests:0,waiting:0};
 let memberAvailability={};
 let releasedSpotsTaken=0;
 let guestRecords=[];
+let memberWaitSince={};
+let gameArchive=[];
 let announcements=[
  {title:"Welcome to Safrook",text:"Game registration is open. Please update your status before the weekly game.",date:"Today"}
 ];
@@ -354,7 +359,7 @@ function show(id){document.querySelectorAll('.screen').forEach(x=>x.classList.re
 function toggle(id){document.getElementById(id).classList.toggle('hidden')}
 function render(){
 renderGame();
-let playingMembers=state.totalMembers-state.unavailableMembers;
+let playingMembers=safrookMembers.filter(m=>m.active!==false&&memberAvailability[m.name]!==false&&memberAvailability[m.name]!=="waiting").length;
 let total=playingMembers+state.guests;
 let spots=Math.max(0,state.capacity-total);
 document.getElementById('total').textContent=total;
@@ -385,13 +390,13 @@ async function setAvailability(canPlay){
  if(!r.ok){msg.innerHTML='<div class="status">⚠ Status could not be saved. '+r.error+'</div>';return}
  populateMembers();syncGuests();render();renderGuestAdmin();
  msg.innerHTML=canPlay
-  ? '<div class="status">✓ '+name+' is confirmed to play. Status saved.</div>'
+  ? '<div class="status">✓ '+name+(memberAvailability[name]==="waiting"?" is on the waiting list.":" is confirmed to play.")+" Status saved.</div>"
   : '<div class="status">✓ '+name+' can’t play. The spot is now available to a guest. Status saved.</div>';
 }
 async function guestRegister(){
  let n=document.getElementById('guestName').value.trim();
  if(!n){guestMsg.innerHTML='<div class="status">Please enter the guest name.</div>';return}
- if(!game.registrationOpen){guestMsg.innerHTML='<div class="status">Registration is currently closed.</div>';return}
+ if(!game.registrationOpen || gameKickoff()<=Date.now()){guestMsg.innerHTML='<div class="status">Registration is currently closed.</div>';return}
  guestMsg.innerHTML='<div class="status">Registering guest...</div>';
  let r=await publicAction("/api/guest-register",{name:n});
  if(!r.ok){guestMsg.innerHTML='<div class="status">⚠ Guest could not be registered. '+r.error+'</div>';return}
@@ -419,21 +424,44 @@ async function removeGuest(i){
  if(!await saveLocal()){guestRecords=backup;syncGuests();render();renderGuestAdmin();alert("Could not save guest removal. "+lastSaveError);}
 }
 function promoteWaiting(){
- let playingMembers=state.totalMembers-state.unavailableMembers;
- let confirmed=guestRecords.filter(g=>g.status==="confirmed").length;
- if(playingMembers+confirmed>=state.capacity)return;
- let idx=guestRecords.findIndex(g=>g.status==="waiting");
- if(idx>=0)guestRecords[idx].status="confirmed";
+ // Fill ALL available spaces; keep the guest queue in registration order.
+ let active=safrookMembers.filter(m=>m.active!==false);
+ let confirmedMembers=active.filter(m=>memberAvailability[m.name]!==false && memberAvailability[m.name]!=="waiting").length;
+ let confirmedGuests=guestRecords.filter(g=>g.status==="confirmed").length;
+ let free=Math.max(0,Number(game.capacity)-confirmedMembers-confirmedGuests);
+ const now=Date.now(),deadline=now>=gameKickoff()-Number(game.priorityHours??2)*3600000;
+ const queue=deadline?[...active.filter(m=>memberAvailability[m.name]==="waiting").map(m=>({m,t:memberWaitSince[m.name]||now})),...guestRecords.filter(g=>g.status==="waiting").map(g=>({g,t:g.queueSince??g.registeredAt??now}))].sort((a,b)=>a.t-b.t):[...active.filter(m=>memberAvailability[m.name]==="waiting").map(m=>({m})),...guestRecords.filter(g=>g.status==="waiting").map(g=>({g}))];
+ for(const item of queue){if(!free)break;if(item.m){memberAvailability[item.m.name]=true;delete memberWaitSince[item.m.name]}else{item.g.status="confirmed";item.g.confirmedAt=now;delete item.g.displacedAt}free--;}
+ syncGuests();
 }
+function gameKickoff(){
+ const date=game.date,start=game.start;if(!date||!start)return Infinity;const d=new Date(date+"T"+start+":00");return d.getTime();
+}
+function showAttendance(){
+ let el=document.getElementById("attendanceDetails");if(!el)return;
+ if(!el.classList.contains("hidden")){el.classList.add("hidden");return}
+ let members=safrookMembers.filter(m=>m.active!==false);
+ let confirmed=members.filter(m=>memberAvailability[m.name]!==false&&memberAvailability[m.name]!=="waiting").map(m=>m.name);
+ let unavailable=members.filter(m=>memberAvailability[m.name]===false).map(m=>m.name);
+ let waitingMembers=members.filter(m=>memberAvailability[m.name]==="waiting").map(m=>m.name);
+ let guests=guestRecords.filter(g=>g.status==="confirmed").map(g=>g.name);
+ let waitingGuests=guestRecords.filter(g=>g.status==="waiting").map(g=>g.name);
+ const esc=x=>String(x).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+ const row=(label,names)=>`<div style="margin:10px 0"><b>${label} (${names.length})</b><div>${names.length?names.map(esc).join(" · "):"None"}</div></div>`;
+ el.innerHTML=row("🟢 Playing members",confirmed)+row("🔴 Not playing",unavailable)+row("🟢 Confirmed guests",guests)+row("⌛ Waiting in order",waitingGuests.concat(waitingMembers));
+ el.classList.remove("hidden");
+}
+
 function renderGuestAdmin(){
  let el=document.getElementById("guestAdminList"); if(!el)return;
  if(!guestRecords.length){el.innerHTML='<div class="status">No guests registered yet.</div>';return}
  el.innerHTML=guestRecords.map((g,i)=>`
  <div class="status" style="margin-bottom:10px">
   <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
-   <div><b>${g.name}</b><div class="muted" style="font-size:13px">${g.status==="confirmed"?"Confirmed":"Waiting List"} • ${g.status==="confirmed"?(g.paid?"Paid $"+game.guestFee:"Unpaid $"+game.guestFee):"Payment not due"}</div></div>
+   <div><b>${g.name}</b><div class="muted" style="font-size:13px">${g.status==="confirmed"?"Confirmed":g.displacedAt?"Waiting (member priority)":"Waiting List"} • ${g.status==="confirmed"?(g.paid?"Paid $"+game.guestFee:"Unpaid $"+game.guestFee):"Payment not due"}</div></div>
    <div style="display:flex;gap:6px">
     ${g.status==="confirmed"?`<button class="btn2" style="padding:8px 10px" onclick="togglePaid(${i})">${g.paid?"Mark Unpaid":"Mark Paid"}</button>`:""}
+    <button class="btn2" style="padding:8px 10px" onclick="toggleGuestProtection(${i})">${g.protectedSpot?"Unprotect Spot":"Protect Spot"}</button>
     <button class="btn2" style="padding:8px 10px" onclick="removeGuest(${i})">Remove</button>
    </div>
   </div>
@@ -510,7 +538,7 @@ function renderPublicTeams(){const e=document.getElementById("publicTeams");if(!
 
 function renderGames(type="upcoming"){
  let el=document.getElementById("gamesList"); if(!el)return;
- let rows=games.filter(g=>g.status===type);
+ let rows=(type==="completed"?gameArchive:games.filter(g=>g.status===type));
  if(type==="upcoming"){
    let current={title:game.title,date:game.date,start:game.start,end:game.end,location:game.location,field:game.field,status:"upcoming"};
    rows=[current].concat(rows.filter(g=>g.date!==game.date));
@@ -619,7 +647,7 @@ async function verifyAdmin(){
 function adminLogout(){adminToken="";sessionStorage.removeItem("safrook_admin_token");show("home")}
 
 function snapshot(){
- return {game,safrookMembers,memberAvailability,guestRecords,announcements,games,
+ return {game,safrookMembers,memberAvailability,guestRecords,announcements,games,memberWaitSince,gameArchive,
          teams:{groups:generatedTeams,published:teamsPublished,conditions:teamConditions,count:configuredTeamCount}};
 }
 let lastSaveError="";
@@ -659,6 +687,8 @@ function applyState(x){
  if(x.guestRecords)guestRecords=x.guestRecords;
  if(x.announcements)announcements=x.announcements;
  if(x.games)games=x.games;
+ if(x.memberWaitSince)memberWaitSince=x.memberWaitSince;
+ if(x.gameArchive)gameArchive=x.gameArchive;
  if(x.teams){generatedTeams=x.teams.groups||[x.teams.a||[],x.teams.b||[]].filter(t=>t.length);teamsPublished=!!x.teams.published;teamConditions=x.teams.conditions||[];configuredTeamCount=x.teams.count||generatedTeams.length||2;const tc=document.getElementById("teamCount");if(tc)tc.value=configuredTeamCount}
  state.capacity=game.capacity;
  state.totalMembers=safrookMembers.filter(m=>m.active!==false).length;
@@ -677,6 +707,7 @@ function adminTab(id){
  if(id==="newsAdmin") renderAnnouncements();
  if(id==="membersAdmin") populateMembers();
  if(id==="guestsAdmin") renderGuestAdmin();
+ if(id==="gameAdmin")createNextGame(true);
  if(id==="teamsAdmin") refreshTeamAdmin();
 }
 
@@ -690,25 +721,48 @@ function prettyTime(v){
  let [h,m]=v.split(":").map(Number), ap=h>=12?"PM":"AM";
  h=h%12||12; return h+":"+(m||0).toString().padStart(2,"0")+" "+ap;
 }
+
+async function toggleGuestProtection(i){
+ const before=!!guestRecords[i].protectedSpot;guestRecords[i].protectedSpot=!before;
+ renderGuestAdmin();if(!await saveLocal()){guestRecords[i].protectedSpot=before;renderGuestAdmin();alert("Could not save spot protection: "+lastSaveError)}
+}
+async function createNextGame(auto=false){
+ if(!adminToken)return;
+ if(auto&&(!Number.isFinite(gameEnd())||Date.now()<gameEnd()||gameArchive.some(g=>g.gameKey===game.date+"|"+game.start)))return;
+ if(!auto&&!confirm("Archive this game and create next week's game? Members, PINs and historical payments will be kept."))return;
+ const backup=structuredClone(snapshot());
+ const oldKey=game.date+"|"+game.start;
+ gameArchive.push({...structuredClone(game),gameKey:oldKey,status:"completed",memberAvailability:structuredClone(memberAvailability),guestRecords:structuredClone(guestRecords),teams:structuredClone(generatedTeams),archivedAt:Date.now()});
+ const [y,m,d]=game.date.split("-").map(Number);const next=new Date(Date.UTC(y,m-1,d+7));game.date=next.toISOString().slice(0,10);
+ memberAvailability={};memberWaitSince={};guestRecords=[];generatedTeams=[];teamsPublished=false;game.registrationOpen=true;
+ state.totalMembers=safrookMembers.filter(m=>m.active!==false).length;state.unavailableMembers=0;syncGuests();loadGameForm();render();renderGuestAdmin();renderGames("upcoming");
+ const ok=await saveLocal();if(!ok){applyState(backup);loadGameForm();syncGuests();render();renderGuestAdmin();alert("Game rollover failed: "+lastSaveError)}
+ else if(!auto)alert("Game archived. Next weekly game created.");
+}
+function gameEnd(){if(!game.date||!game.end)return Infinity;return new Date(game.date+"T"+game.end+":00").getTime()}
+
 function loadGameForm(){
  if(!document.getElementById("gTitle"))return;
  gTitle.value=game.title;gDate.value=game.date;gStart.value=game.start;gEnd.value=game.end;
- gLocation.value=game.location;gField.value=game.field;gCapacity.value=game.capacity;gFee.value=game.guestFee;gOpen.checked=game.registrationOpen;
+ gLocation.value=game.location;gField.value=game.field;gCapacity.value=game.capacity;gFee.value=game.guestFee;gPriority.value=game.priorityHours??2;gOpen.checked=game.registrationOpen;
 }
 async function saveGame(){
  const oldGameKey=game.date+"|"+game.start+"|"+game.location;
+ const backup=snapshot();
  game.title=gTitle.value.trim()||"Safrook Weekly Game";
  game.date=gDate.value;game.start=gStart.value;game.end=gEnd.value;
  game.location=gLocation.value.trim()||"TBD";game.field=gField.value.trim()||"";
  game.capacity=Math.max(1,parseInt(gCapacity.value)||22);
- game.guestFee=Math.max(0,parseFloat(gFee.value)||0);game.registrationOpen=gOpen.checked;
+ game.guestFee=Math.max(0,parseFloat(gFee.value)||0);game.priorityHours=Math.max(0,Number(gPriority.value)||0);game.registrationOpen=gOpen.checked;
  if(oldGameKey!==game.date+"|"+game.start+"|"+game.location){generatedTeams=[];teamsPublished=false;teamConditions=[];}
  state.capacity=game.capacity;
- render();
+ promoteWaiting();
+ render();renderGuestAdmin();
  gameAdminMsg.innerHTML='<div class="status">Saving game...</div>';
  const saved=await saveLocal();
+ if(!saved){applyState(backup);syncGuests();render();renderGuestAdmin();loadGameForm();}
  gameAdminMsg.innerHTML=saved
-   ? '<div class="status">✓ Game saved successfully. These settings are now shared with everyone.</div>'
+   ? '<div class="status">✓ Game saved. Available spaces were offered to waiting players in queue order.</div>'
    : '<div class="status">⚠ Game could not be saved to the Safrook server.<br><strong>'+lastSaveError+'</strong><br>Please send me this error.</div>';
 }
 function renderGame(){
@@ -895,6 +949,8 @@ async function resetPin(i){
 (async function startSafrook(){
  await loadLocal();
  populateMembers();loadGameForm();syncGuests();render();renderGuestAdmin();renderAnnouncements();renderGames('upcoming');
+ // Rollover requires authenticated Admin; do not overwrite a completed game from a public visit.
+ if(adminToken)await createNextGame(true);
 })();
 </script>
 <div id="adminLock">
