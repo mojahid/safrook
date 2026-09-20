@@ -1,5 +1,5 @@
 {
-  "name": "safrook-qa",
+  "name": "safrook",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,5 +9,8 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0"
+  },
+  "dependencies": {
+    "@netlify/database": "^2.0.0"
   }
 }
