@@ -469,13 +469,27 @@ function reconcileCapacityLocally(newCapacity){
  return {ok:true,moved:excess};
 }
 
+function guestTimestamp(value){
+ const time=Number(value);
+ if(!Number.isFinite(time)||time<=0)return "Not recorded (older registration)";
+ return new Date(time).toLocaleString("en-US",{year:"numeric",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
+}
+function guestQueuePosition(g){
+ if(g.status!=="waiting")return "";
+ const waiting=guestRecords.filter(x=>x.status==="waiting")
+  .sort((a,b)=>(a.queueSince??a.registeredAt??0)-(b.queueSince??b.registeredAt??0));
+ return " • Guest queue #"+(waiting.indexOf(g)+1);
+}
 function renderGuestAdmin(){
  let el=document.getElementById("guestAdminList"); if(!el)return;
  if(!guestRecords.length){el.innerHTML='<div class="status">No guests registered yet.</div>';return}
  el.innerHTML=guestRecords.map((g,i)=>`
  <div class="status" style="margin-bottom:10px">
   <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
-   <div><b>${g.name}</b><div class="muted" style="font-size:13px">${g.status==="confirmed"?"Confirmed":g.displacedAt?"Waiting (member priority)":"Waiting List"} • ${g.status==="confirmed"?(g.paid?"Paid $"+game.guestFee:"Unpaid $"+game.guestFee):"Payment not due"}</div></div>
+   <div><b>${g.name}</b><div class="muted" style="font-size:13px">${g.status==="confirmed"?"Confirmed":g.displacedAt?"Waiting (member priority)":"Waiting List"}${guestQueuePosition(g)} • ${g.status==="confirmed"?(g.paid?"Paid $"+game.guestFee:"Unpaid $"+game.guestFee):"Payment not due"}</div>
+   <div class="muted" style="font-size:12px;margin-top:5px">Registered: ${guestTimestamp(g.registeredAt)}</div>
+   <div class="muted" style="font-size:12px">Confirmed: ${guestTimestamp(g.confirmedAt)}</div>
+   ${g.displacedAt?`<div class="muted" style="font-size:12px">Moved to waiting: ${guestTimestamp(g.displacedAt)}</div>`:""}</div>
    <div style="display:flex;gap:6px">
     ${g.status==="confirmed"?`<button class="btn2" style="padding:8px 10px" onclick="togglePaid(${i})">${g.paid?"Mark Unpaid":"Mark Paid"}</button>`:""}
     <button class="btn2" style="padding:8px 10px" onclick="toggleGuestProtection(${i})">${g.protectedSpot?"Unprotect Spot":"Protect Spot"}</button>
