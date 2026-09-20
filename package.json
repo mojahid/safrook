@@ -1,8 +1,13 @@
 {
-  "name": "safrook",
+  "name": "safrook-qa",
   "private": true,
   "type": "module",
-  "dependencies": {
-    "@netlify/database": "latest"
+  "scripts": {
+    "test:rules": "node --test tests/registration-rules.test.js",
+    "test:e2e": "playwright test",
+    "test": "npm run test:rules && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
   }
 }
