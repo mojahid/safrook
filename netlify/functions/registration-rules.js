@@ -22,7 +22,20 @@ export function reconcile(state,now=Date.now()){
  const protectedNow=deadlinePassed(state.game,now);
  const playing=()=>members.filter(m=>a[m.name]!==false&&a[m.name]!=='waiting').length;
  const guestCount=()=>guests.filter(g=>g.status==='confirmed').length;
- // Do not bump confirmed guests automatically when capacity is reduced; admin must resolve any existing over-capacity state.
+ // Enforce capacity without cancelling members or protected guests. Move newest eligible
+ // confirmed guests to waiting; retain payment and original registration timestamp.
+ const excess=playing()+guestCount()-cap;
+ if(excess>0){
+  const candidates=guests.filter(g=>g.status==='confirmed'&&!g.protectedSpot)
+   .sort((x,y)=>(y.confirmedAt??y.registeredAt??0)-(x.confirmedAt??x.registeredAt??0));
+  if(candidates.length<excess){
+   const error=new Error('Capacity cannot be below confirmed members and protected guests; change attendance or increase capacity first.');
+   error.status=409;throw error;
+  }
+  for(const g of candidates.slice(0,excess)){
+   g.status='waiting';g.displacedAt=now;g.queueSince=g.registeredAt??g.queueSince??now;
+  }
+ }
  let free=Math.max(0,cap-playing()-guestCount());
  const waitingMembers=members.filter(m=>a[m.name]==='waiting').sort((x,y)=>(state.memberWaitSince?.[x.name]||0)-(state.memberWaitSince?.[y.name]||0));
  const waitingGuests=guests.filter(g=>g.status==='waiting').sort((x,y)=>(x.queueSince??x.registeredAt??0)-(y.queueSince??y.registeredAt??0));

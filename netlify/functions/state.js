@@ -35,6 +35,6 @@ export default async (req) => {
    return Response.json({ok:true},{headers:{...headers,"x-safrook-revision":updated[0].revision}});
   }
   return new Response("Method not allowed",{status:405,headers});
- }catch(e){console.error("Safrook state error",e);return Response.json({error:"Server/database error; no change confirmed."},{status:503,headers})}
+ }catch(e){console.error("Safrook state error",e);return Response.json({error:e.status===409?e.message:"Server/database error; no change confirmed."},{status:e.status===409?409:503,headers})}
 };
 export const config={path:"/api/state"};
