@@ -359,6 +359,7 @@ function show(id){document.querySelectorAll('.screen').forEach(x=>x.classList.re
 function toggle(id){document.getElementById(id).classList.toggle('hidden')}
 function render(){
 renderGame();
+syncGuests();
 let playingMembers=safrookMembers.filter(m=>m.active!==false&&memberAvailability[m.name]!==false&&memberAvailability[m.name]!=="waiting").length;
 let total=playingMembers+state.guests;
 let spots=Math.max(0,state.capacity-total);
@@ -369,6 +370,7 @@ document.getElementById('guests').textContent=state.guests;
 document.getElementById('waiting').textContent=state.waiting;
 document.getElementById('spots').textContent=spots;
 document.getElementById('fill').style.width=Math.min(100,total/state.capacity*100)+'%';
+renderAttendanceDetails();
 }
 function memberStatus(){
 let p=document.getElementById('pin').value;
@@ -438,18 +440,33 @@ function gameKickoff(){
  const date=game.date,start=game.start;if(!date||!start)return Infinity;const d=new Date(date+"T"+start+":00");return d.getTime();
 }
 function showAttendance(){
- let el=document.getElementById("attendanceDetails");if(!el)return;
- if(!el.classList.contains("hidden")){el.classList.add("hidden");return}
- let members=safrookMembers.filter(m=>m.active!==false);
- let confirmed=members.filter(m=>memberAvailability[m.name]!==false&&memberAvailability[m.name]!=="waiting").map(m=>m.name);
- let unavailable=members.filter(m=>memberAvailability[m.name]===false).map(m=>m.name);
- let waitingMembers=members.filter(m=>memberAvailability[m.name]==="waiting").map(m=>m.name);
- let guests=guestRecords.filter(g=>g.status==="confirmed").map(g=>g.name);
- let waitingGuests=guestRecords.filter(g=>g.status==="waiting").map(g=>g.name);
- const esc=x=>String(x).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+ const el=document.getElementById("attendanceDetails");if(!el)return;
+ el.classList.toggle("hidden");
+ renderAttendanceDetails();
+}
+function renderAttendanceDetails(){
+ const el=document.getElementById("attendanceDetails");if(!el||el.classList.contains("hidden"))return;
+ const members=safrookMembers.filter(m=>m.active!==false);
+ const confirmed=members.filter(m=>memberAvailability[m.name]!==false&&memberAvailability[m.name]!=="waiting").map(m=>m.name);
+ const unavailable=members.filter(m=>memberAvailability[m.name]===false).map(m=>m.name);
+ const guests=guestRecords.filter(g=>g.status==="confirmed").map(g=>g.name);
+ const queue=[...members.filter(m=>memberAvailability[m.name]==="waiting").map(m=>({name:m.name,t:memberWaitSince[m.name]||0})),
+  ...guestRecords.filter(g=>g.status==="waiting").map(g=>({name:g.name,t:g.queueSince??g.registeredAt??0}))].sort((a,b)=>a.t-b.t).map((g,i)=>`${i+1}. ${g.name}`);
+ const esc=x=>String(x).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
  const row=(label,names)=>`<div style="margin:10px 0"><b>${label} (${names.length})</b><div>${names.length?names.map(esc).join(" · "):"None"}</div></div>`;
- el.innerHTML=row("🟢 Playing members",confirmed)+row("🔴 Not playing",unavailable)+row("🟢 Confirmed guests",guests)+row("⌛ Waiting in order",waitingGuests.concat(waitingMembers));
- el.classList.remove("hidden");
+ el.innerHTML=row("🟢 Playing members",confirmed)+row("🔴 Not playing",unavailable)+row("🟢 Confirmed guests",guests)+row("⌛ Waiting in order",queue);
+}
+function reconcileCapacityLocally(newCapacity){
+ const members=safrookMembers.filter(m=>m.active!==false&&memberAvailability[m.name]!==false&&memberAvailability[m.name]!=="waiting").length;
+ const confirmed=guestRecords.filter(g=>g.status==="confirmed");
+ const excess=members+confirmed.length-newCapacity;
+ if(excess<=0)return {ok:true,moved:0};
+ const candidates=confirmed.filter(g=>!g.protectedSpot).sort((a,b)=>(b.confirmedAt??b.registeredAt??0)-(a.confirmedAt??a.registeredAt??0));
+ if(candidates.length<excess)return {ok:false,error:`Cannot reduce capacity to ${newCapacity}: ${members} members and ${confirmed.length-candidates.length} protected guests must retain their spots. Increase capacity or change attendance first.`};
+ for(const guest of candidates.slice(0,excess)){
+  guest.status="waiting";guest.displacedAt=Date.now();guest.queueSince=guest.registeredAt??guest.queueSince??Date.now();
+ }
+ return {ok:true,moved:excess};
 }
 
 function renderGuestAdmin(){
@@ -784,11 +801,14 @@ function loadGameForm(){
 }
 async function saveGame(){
  const oldGameKey=game.date+"|"+game.start+"|"+game.location;
- const backup=snapshot();
+ const backup=structuredClone(snapshot());
  game.title=gTitle.value.trim()||"Safrook Weekly Game";
  game.date=gDate.value;game.start=gStart.value;game.end=gEnd.value;
  game.location=gLocation.value.trim()||"TBD";game.field=gField.value.trim()||"";
- game.capacity=Math.max(1,parseInt(gCapacity.value)||22);
+ const proposedCapacity=Math.max(1,parseInt(gCapacity.value)||22);
+ const capacityResult=reconcileCapacityLocally(proposedCapacity);
+ if(!capacityResult.ok){applyState(backup);syncGuests();render();renderGuestAdmin();loadGameForm();gameAdminMsg.textContent="⚠ "+capacityResult.error;return;}
+ game.capacity=proposedCapacity;
  game.guestFee=Math.max(0,parseFloat(gFee.value)||0);game.priorityHours=Math.max(0,Number(gPriority.value)||0);game.registrationOpen=gOpen.checked;
  if(oldGameKey!==game.date+"|"+game.start+"|"+game.location){generatedTeams=[];teamsPublished=false;teamConditions=[];}
  state.capacity=game.capacity;
@@ -798,7 +818,7 @@ async function saveGame(){
  const saved=await saveLocal();
  if(!saved){applyState(backup);syncGuests();render();renderGuestAdmin();loadGameForm();}
  gameAdminMsg.innerHTML=saved
-   ? '<div class="status">✓ Game saved. Available spaces were offered to waiting players in queue order.</div>'
+   ? '<div class="status">✓ Game saved. '+capacityResult.moved+' guest(s) moved to waiting due to reduced capacity; open spots were offered in queue order.</div>'
    : '<div class="status">⚠ Game could not be saved to the Safrook server.<br><strong>'+lastSaveError+'</strong><br>Please send me this error.</div>';
 }
 function renderGame(){
