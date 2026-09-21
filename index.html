@@ -219,14 +219,6 @@ input,select{width:100%;padding:14px;margin:8px 0 14px;border-radius:12px;border
 <input id="pin" maxlength="4" inputmode="numeric" placeholder="4-digit PIN">
 <button class="memberbtn" onclick="memberStatus()">Continue</button>
 <div id="memberMsg"></div>
-<div id="memberContactPanel" class="panel hidden">
-<h3>My Contact Information</h3>
-<p class="muted">Only Safrook admins can view your contact details. WhatsApp reminders are not enabled yet.</p>
-<label>Email (optional)</label><input id="memberEmail" type="email" autocomplete="email" placeholder="name@example.com">
-<label>Phone including country code (optional)</label><input id="memberPhone" type="tel" autocomplete="tel" placeholder="+17035551234">
-<label style="display:flex;gap:8px;align-items:center"><input id="memberWhatsapp" type="checkbox" style="width:auto"> I agree to receive Safrook WhatsApp reminders at this number.</label>
-<button class="memberbtn" onclick="saveMyContact()">Save Contact Information</button><div id="memberContactMsg"></div>
-</div>
 <div id="availabilityPanel" class="panel hidden">
 <h3 style="margin-top:0">My Game Status</h3>
 <p style="min-height:auto">Choose your status for this game.</p>
@@ -399,19 +391,11 @@ function contactFields(email,phone,optIn){
  if(optIn&&!phone)throw Error("Add a phone number before enabling WhatsApp reminders.");
  return {email,phone,whatsappOptIn:!!optIn};
 }
-async function saveMyContact(){
- const name=memberName.value,pin=document.getElementById("pin").value;
- try{
-  const contact=contactFields(memberEmail.value,memberPhone.value,memberWhatsapp.checked);
-  memberContactMsg.textContent="Saving...";
-  const r=await contactRequest({action:"selfSave",name,pin,contact});
-  memberContactMsg.textContent=r.ok?"✓ Contact information saved.":"⚠ "+r.error;
- }catch(e){memberContactMsg.textContent="⚠ "+e.message}
-}
 async function loadAdminContacts(){
- if(!adminToken)return;
+ if(!adminToken){contactError="Please sign in as admin again.";return false;}
  const r=await contactRequest({action:"adminList"});
- if(r.ok)adminContacts=r.contacts||{};
+ if(!r.ok){contactError=r.error||"Could not load member contacts.";return false;}
+ adminContacts=r.contacts||{};contactError="";return true;
 }
 async function saveAdminContact(name,oldName){
  try{
@@ -424,10 +408,9 @@ async function saveAdminContact(name,oldName){
 async function memberStatus(){
  const pin=document.getElementById('pin').value.trim(),name=document.getElementById('memberName').value;
  const r=await contactRequest({action:"selfGet",name,pin});
- if(!r.ok){memberMsg.textContent="Incorrect PIN or server error: "+r.error;availabilityPanel.classList.add('hidden');memberContactPanel.classList.add('hidden');return}
- memberEmail.value=r.contact.email||"";memberPhone.value=r.contact.phone||"";memberWhatsapp.checked=!!r.contact.whatsappOptIn;
+ if(!r.ok){memberMsg.textContent="Incorrect PIN or server error: "+r.error;availabilityPanel.classList.add('hidden');return}
  memberMsg.textContent="✓ PIN accepted.";
- availabilityPanel.classList.remove('hidden');memberContactPanel.classList.remove('hidden');
+ availabilityPanel.classList.remove('hidden');
 }
 async function setAvailability(canPlay){
  let name=document.getElementById('memberName').value;
@@ -947,7 +930,10 @@ async function removeMember(i){
 }
 
 async function editMember(i) {
-  await loadAdminContacts();
+  if(!await loadAdminContacts()){
+    adminMsg.textContent="⚠ Could not load member contact information: "+contactError;
+    return;
+  }
   const m = safrookMembers[i];
   if (!m) return;
 
