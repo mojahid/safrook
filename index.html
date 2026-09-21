@@ -219,6 +219,14 @@ input,select{width:100%;padding:14px;margin:8px 0 14px;border-radius:12px;border
 <input id="pin" maxlength="4" inputmode="numeric" placeholder="4-digit PIN">
 <button class="memberbtn" onclick="memberStatus()">Continue</button>
 <div id="memberMsg"></div>
+<div id="memberContactPanel" class="panel hidden">
+<h3>My Contact Information</h3>
+<p class="muted">Only Safrook admins can view your contact details. WhatsApp reminders are not enabled yet.</p>
+<label>Email (optional)</label><input id="memberEmail" type="email" autocomplete="email" placeholder="name@example.com">
+<label>Phone including country code (optional)</label><input id="memberPhone" type="tel" autocomplete="tel" placeholder="+17035551234">
+<label style="display:flex;gap:8px;align-items:center"><input id="memberWhatsapp" type="checkbox" style="width:auto"> I agree to receive Safrook WhatsApp reminders at this number.</label>
+<button class="memberbtn" onclick="saveMyContact()">Save Contact Information</button><div id="memberContactMsg"></div>
+</div>
 <div id="availabilityPanel" class="panel hidden">
 <h3 style="margin-top:0">My Game Status</h3>
 <p style="min-height:auto">Choose your status for this game.</p>
@@ -230,7 +238,7 @@ input,select{width:100%;padding:14px;margin:8px 0 14px;border-radius:12px;border
 </div>
 </div></div>
 <div class="choice"><h2>👥 Guest</h2><p>Guests can register for available spots. Registration is first come, first served.</p><button class="guestbtn" onclick="toggle('guestPanel')">Guest Registration</button>
-<div id="guestPanel" class="panel hidden"><input id="guestName" placeholder="Guest full name"><button class="guestbtn" onclick="guestRegister()">Register Guest</button><div id="guestMsg"></div></div></div>
+<div id="guestPanel" class="panel hidden"><input id="guestName" placeholder="Guest full name"><label>Preferred playing position</label><select id="guestPosition"><option value="">Select position</option><option>Goalkeeper</option><option>Defender</option><option>Midfielder</option><option>Forward</option></select><button class="guestbtn" onclick="guestRegister()">Register Guest</button><div id="guestMsg"></div></div></div>
 </div></div></section>
 
 <section id="adminScreen" class="screen">
@@ -325,6 +333,9 @@ input,select{width:100%;padding:14px;margin:8px 0 14px;border-radius:12px;border
 </select>
 <select id="newMemberRating"><option value="">Rating</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select>
 <input id="newMemberPin" maxlength="4" inputmode="numeric" placeholder="4-digit PIN">
+<label>Email (optional)</label><input id="newMemberEmail" type="email" placeholder="name@example.com">
+<label>Phone including country code (optional)</label><input id="newMemberPhone" type="tel" placeholder="+17035551234">
+<label style="display:flex;gap:8px;align-items:center"><input id="newMemberWhatsapp" type="checkbox" style="width:auto"> Member agreed to WhatsApp reminders</label>
 <button class="memberbtn" onclick="addMember()">+ Add Safrook Member</button>
 <div id="adminMsg"></div>
 </div>
@@ -372,17 +383,52 @@ document.getElementById('spots').textContent=spots;
 document.getElementById('fill').style.width=Math.min(100,total/state.capacity*100)+'%';
 renderAttendanceDetails();
 }
-function memberStatus(){
-let p=document.getElementById('pin').value;
-let name=document.getElementById('memberName').value;
-let m=safrookMembers.find(x=>x.name===name);
-if(m && p===m.pin){
- memberMsg.innerHTML='<div class="status">✓ PIN accepted.</div>';
- document.getElementById('availabilityPanel').classList.remove('hidden');
-}else{
- memberMsg.innerHTML='<div class="status">Incorrect PIN. Please try again.</div>';
- document.getElementById('availabilityPanel').classList.add('hidden');
-}}
+let adminContacts={};let contactError="";
+async function contactRequest(payload){
+ try{
+  const headers={"content-type":"application/json"};
+  if(payload.action.startsWith("admin"))headers.authorization="Bearer "+adminToken;
+  const r=await fetch("/api/member-contact",{method:"POST",headers,body:JSON.stringify(payload),cache:"no-store"});
+  const data=await r.json();return r.ok?{ok:true,...data}:{ok:false,error:data.error||"HTTP "+r.status};
+ }catch(e){return {ok:false,error:e.message||String(e)}}
+}
+function contactFields(email,phone,optIn){
+ email=email.trim();phone=phone.replace(/[\s().-]/g,"");
+ if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw Error("Enter a valid email address.");
+ if(phone&&!/^\+[1-9]\d{7,14}$/.test(phone))throw Error("Phone must include country code, e.g. +17035551234.");
+ if(optIn&&!phone)throw Error("Add a phone number before enabling WhatsApp reminders.");
+ return {email,phone,whatsappOptIn:!!optIn};
+}
+async function saveMyContact(){
+ const name=memberName.value,pin=document.getElementById("pin").value;
+ try{
+  const contact=contactFields(memberEmail.value,memberPhone.value,memberWhatsapp.checked);
+  memberContactMsg.textContent="Saving...";
+  const r=await contactRequest({action:"selfSave",name,pin,contact});
+  memberContactMsg.textContent=r.ok?"✓ Contact information saved.":"⚠ "+r.error;
+ }catch(e){memberContactMsg.textContent="⚠ "+e.message}
+}
+async function loadAdminContacts(){
+ if(!adminToken)return;
+ const r=await contactRequest({action:"adminList"});
+ if(r.ok)adminContacts=r.contacts||{};
+}
+async function saveAdminContact(name,oldName){
+ try{
+  const contact=contactFields(newMemberEmail.value,newMemberPhone.value,newMemberWhatsapp.checked);
+  const r=await contactRequest({action:"adminSave",name,oldName,contact});
+  if(!r.ok){contactError=r.error;return false}
+  if(oldName&&oldName!==name)delete adminContacts[oldName];adminContacts[name]=contact;return true;
+ }catch(e){contactError=e.message;return false}
+}
+async function memberStatus(){
+ const pin=document.getElementById('pin').value.trim(),name=document.getElementById('memberName').value;
+ const r=await contactRequest({action:"selfGet",name,pin});
+ if(!r.ok){memberMsg.textContent="Incorrect PIN or server error: "+r.error;availabilityPanel.classList.add('hidden');memberContactPanel.classList.add('hidden');return}
+ memberEmail.value=r.contact.email||"";memberPhone.value=r.contact.phone||"";memberWhatsapp.checked=!!r.contact.whatsappOptIn;
+ memberMsg.textContent="✓ PIN accepted.";
+ availabilityPanel.classList.remove('hidden');memberContactPanel.classList.remove('hidden');
+}
 async function setAvailability(canPlay){
  let name=document.getElementById('memberName').value;
  let pin=document.getElementById('pin').value.trim();
@@ -400,9 +446,11 @@ async function guestRegister(){
  if(!n){guestMsg.innerHTML='<div class="status">Please enter the guest name.</div>';return}
  if(!game.registrationOpen || gameKickoff()<=Date.now()){guestMsg.innerHTML='<div class="status">Registration is currently closed.</div>';return}
  guestMsg.innerHTML='<div class="status">Registering guest...</div>';
- let r=await publicAction("/api/guest-register",{name:n});
+ const position=guestPosition.value;
+ if(!position){guestMsg.textContent="Please select a playing position.";return}
+ let r=await publicAction("/api/guest-register",{name:n,position});
  if(!r.ok){guestMsg.innerHTML='<div class="status">⚠ Guest could not be registered. '+r.error+'</div>';return}
- document.getElementById('guestName').value="";
+ document.getElementById('guestName').value="";guestPosition.value="";
  syncGuests();render();renderGuestAdmin();
  guestMsg.innerHTML=r.data.status==="confirmed"
   ? '<div class="status">✓ '+n+' is confirmed. Guest fee: $'+game.guestFee+'. Registration saved.</div>'
@@ -487,10 +535,12 @@ function renderGuestAdmin(){
  <div class="status" style="margin-bottom:10px">
   <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
    <div><b>${g.name}</b><div class="muted" style="font-size:13px">${g.status==="confirmed"?"Confirmed":g.displacedAt?"Waiting (member priority)":"Waiting List"}${guestQueuePosition(g)} • ${g.status==="confirmed"?(g.paid?"Paid $"+game.guestFee:"Unpaid $"+game.guestFee):"Payment not due"}</div>
+   <div class="muted" style="font-size:12px;margin-top:5px">Position: ${g.position||"Not specified"}</div>
    <div class="muted" style="font-size:12px;margin-top:5px">Registered: ${guestTimestamp(g.registeredAt)}</div>
    <div class="muted" style="font-size:12px">Confirmed: ${guestTimestamp(g.confirmedAt)}</div>
    ${g.displacedAt?`<div class="muted" style="font-size:12px">Moved to waiting: ${guestTimestamp(g.displacedAt)}</div>`:""}</div>
    <div style="display:flex;gap:6px">
+    <button class="btn2" style="padding:8px 10px" onclick="editGuestPosition(${i})">Edit Position</button>
     ${g.status==="confirmed"?`<button class="btn2" style="padding:8px 10px" onclick="togglePaid(${i})">${g.paid?"Mark Unpaid":"Mark Paid"}</button>`:""}
     <button class="btn2" style="padding:8px 10px" onclick="toggleGuestProtection(${i})">${g.protectedSpot?"Unprotect Spot":"Protect Spot"}</button>
     <button class="btn2" style="padding:8px 10px" onclick="removeGuest(${i})">Remove</button>
@@ -499,6 +549,15 @@ function renderGuestAdmin(){
  </div>`).join("");
 }
 
+async function editGuestPosition(i){
+ const g=guestRecords[i];if(!g)return;
+ const value=prompt("Guest position (Goalkeeper, Defender, Midfielder, Forward):",g.position||"");
+ if(value===null)return;
+ const position=["Goalkeeper","Defender","Midfielder","Forward"].find(p=>p.toLowerCase()===value.trim().toLowerCase());
+ if(!position){alert("Select Goalkeeper, Defender, Midfielder, or Forward.");return}
+ const previous=g.position;g.position=position;renderGuestAdmin();
+ if(!await saveLocal()){g.position=previous;renderGuestAdmin();alert("Could not save position: "+lastSaveError)}
+}
 function activeConfirmedPlayers(){
  const members=safrookMembers.filter(m=>m.active!==false && memberAvailability[m.name]!==false && memberAvailability[m.name]!=="waiting")
  .map(m=>({name:m.name,position:m.position||"Unknown",age:Number(m.age)||35,rating:Number(m.rating)||2,type:"Safrook Member"}));
@@ -660,8 +719,8 @@ async function removeAnnouncement(i){
 
 let games=[];
 let adminToken=sessionStorage.getItem("safrook_admin_token")||"";
-function openAdminLogin(){
- if(adminToken){ show("adminScreen"); return; }
+async function openAdminLogin(){
+ if(adminToken){if(await loadLocal())show("adminScreen");return; }
  adminPinInput.value="";adminLoginMsg.innerHTML="";adminLock.style.display="flex";adminPinInput.focus();
 }
 function closeAdminLogin(){adminLock.style.display="none"}
@@ -672,10 +731,12 @@ async function verifyAdmin(){
   let r=await fetch("/api/admin-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({pin})});
   let x=await r.json();
   if(!r.ok||!x.token){adminLoginMsg.innerHTML='<div class="status">Incorrect Admin PIN.</div>';return}
-  adminToken=x.token;sessionStorage.setItem("safrook_admin_token",adminToken);closeAdminLogin();show("adminScreen");
+  adminToken=x.token;sessionStorage.setItem("safrook_admin_token",adminToken);
+  if(!await loadLocal()){adminLoginMsg.textContent="Could not load admin data. Retry.";return}
+  closeAdminLogin();show("adminScreen");
  }catch(e){adminLoginMsg.innerHTML='<div class="status">Admin login requires the deployed Safrook backend.</div>'}
 }
-function adminLogout(){adminToken="";sessionStorage.removeItem("safrook_admin_token");show("home")}
+async function adminLogout(){adminToken="";sessionStorage.removeItem("safrook_admin_token");await loadLocal();show("home")}
 
 function snapshot(){
  return {game,safrookMembers,memberAvailability,guestRecords,announcements,games,memberWaitSince,gameArchive,
@@ -748,7 +809,7 @@ async function loadLocal(){
  serverReady=false;serverRevision=null;
  const oldCache=localStorage.getItem("safrook_cache");
  try{
-  const r=await fetch("/api/state",{cache:"no-store"});
+  const r=await fetch("/api/state",{cache:"no-store",headers:adminToken?{"authorization":"Bearer "+adminToken}:{}});
   if(!r.ok)throw Error("HTTP "+r.status);
   const x=await r.json();
   if(!x?.game||!Array.isArray(x.safrookMembers))throw Error("Server returned no valid game state");
@@ -772,7 +833,7 @@ function adminTab(id){
  document.querySelectorAll(".adminSection").forEach(x=>x.classList.remove("active"));
  let el=document.getElementById(id); if(el)el.classList.add("active");
  if(id==="newsAdmin") renderAnnouncements();
- if(id==="membersAdmin") populateMembers();
+ if(id==="membersAdmin") {loadAdminContacts();populateMembers();}
  if(id==="guestsAdmin") renderGuestAdmin();
  if(id==="gameAdmin")createNextGame(true);
  if(id==="teamsAdmin") refreshTeamAdmin();
@@ -885,7 +946,8 @@ async function removeMember(i){
  }
 }
 
-function editMember(i) {
+async function editMember(i) {
+  await loadAdminContacts();
   const m = safrookMembers[i];
   if (!m) return;
 
@@ -900,6 +962,8 @@ function editMember(i) {
     m.age >= 20 ? "25" : "";
   document.getElementById("newMemberRating").value = m.rating || "";
   document.getElementById("newMemberPin").value = m.pin || "";
+  const contact=adminContacts[m.name]||{};
+  newMemberEmail.value=contact.email||"";newMemberPhone.value=contact.phone||"";newMemberWhatsapp.checked=!!contact.whatsappOptIn;
 
   const btn = document.querySelector("#membersAdmin .memberbtn");
   if (btn) {
@@ -952,12 +1016,14 @@ async function saveMemberChanges() {
     return;
   }
 
+  const contactSaved=await saveAdminContact(name,oldMember.name);
   editingMemberIndex=-1;
   populateMembers();render();
-  ["newMemberName","newMemberPosition","newMemberAge","newMemberRating","newMemberPin"].forEach(id=>document.getElementById(id).value="");
+  ["newMemberName","newMemberPosition","newMemberAge","newMemberRating","newMemberPin","newMemberEmail","newMemberPhone"].forEach(id=>document.getElementById(id).value="");
   const btn=document.querySelector("#membersAdmin .memberbtn");
   if(btn){btn.textContent="+ Add Safrook Member";btn.onclick=addMember;}
-  adminMsg.innerHTML='<div class="status">✓ Member information saved successfully.</div>';
+  newMemberWhatsapp.checked=false;
+  adminMsg.innerHTML='<div class="status">'+(contactSaved?'✓ Member information saved successfully.':'⚠ Member saved, but contact information was NOT saved. Please retry: '+contactError)+'</div>';
 }
 
 function populateMembers(){
@@ -995,9 +1061,10 @@ async function addMember(){
    return;
  }
 
- newMemberName.value='';newMemberPin.value='';newMemberAge.value='';newMemberPosition.value='';newMemberRating.value='';
+ const contactSaved=await saveAdminContact(name);
+ newMemberName.value='';newMemberPin.value='';newMemberAge.value='';newMemberPosition.value='';newMemberRating.value='';newMemberEmail.value='';newMemberPhone.value='';newMemberWhatsapp.checked=false;
  populateMembers();render();
- adminMsg.innerHTML='<div class="status">✓ '+name+' added and saved as a Safrook Member.</div>';
+ adminMsg.innerHTML='<div class="status">'+(contactSaved?'✓ '+name+' added and saved as a Safrook Member.':'⚠ Member added, but contact was NOT saved: '+contactError)+'</div>';
 }
 
 async function resetPin(i){
