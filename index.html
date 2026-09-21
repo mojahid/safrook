@@ -420,9 +420,15 @@ async function setAvailability(canPlay){
  let r=await publicAction("/api/member-status",{name,pin,canPlay});
  if(!r.ok){msg.innerHTML='<div class="status">⚠ Status could not be saved. '+r.error+'</div>';return}
  populateMembers();syncGuests();render();renderGuestAdmin();
+ if(r.unchanged){
+  msg.innerHTML=canPlay
+   ? '<div class="status">✓ '+name+(r.status==="waiting"?" is already on the waiting list.":" is already confirmed as playing.")+'</div>'
+   : '<div class="status">✓ '+name+' is already marked as not playing. No changes made.</div>';
+  return;
+ }
  msg.innerHTML=canPlay
   ? '<div class="status">✓ '+name+(memberAvailability[name]==="waiting"?" is on the waiting list.":" is confirmed to play.")+" Status saved.</div>"
-  : '<div class="status">✓ '+name+' can’t play. The spot is now available to a guest. Status saved.</div>';
+  : '<div class="status">✓ '+name+' can’t play. Attendance updated. Status saved.</div>';
 }
 async function guestRegister(){
  let n=document.getElementById('guestName').value.trim();
