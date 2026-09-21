@@ -9,6 +9,6 @@ export default async(req)=>{
  if(registrationClosed(state.game))return Response.json({error:"Registration is closed for this game"},{status:409});
  changeMember(state,name,!!canPlay);
  await putState(db,state);
- return Response.json({ok:true,status:state.memberAvailability[name],state});
+ return Response.json({ok:true,status:state.memberAvailability[name]});
 };
 export const config={path:"/api/member-status"};

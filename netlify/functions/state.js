@@ -17,7 +17,10 @@ export default async (req) => {
   const db=getDatabase();
   if(req.method==="GET"){
    const rows=await db.sql`SELECT payload,updated_at::text AS revision FROM app_state WHERE id=${"safrook"}`;
-   return Response.json(rows[0]?.payload||{}, {headers:{...headers,"x-safrook-revision":rows[0]?.revision||"missing"}});
+   const payload=rows[0]?.payload||{};
+   const token=(req.headers.get("authorization")||"").replace(/^Bearer\s+/,"");
+   const visible=validToken(token)?payload:{...payload,safrookMembers:(payload.safrookMembers||[]).map(({pin,...member})=>member)};
+   return Response.json(visible, {headers:{...headers,"x-safrook-revision":rows[0]?.revision||"missing"}});
   }
   if(req.method==="POST"){
    const token=(req.headers.get("authorization")||"").replace(/^Bearer\s+/,"");

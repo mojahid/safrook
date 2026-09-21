@@ -2,7 +2,9 @@ import {getState,putState} from "./public-state.js";
 import {reconcile,registrationClosed} from "./registration-rules.js";
 export default async(req)=>{
  if(req.method!=="POST")return new Response("Method not allowed",{status:405});
- const {name}=await req.json(),n=String(name||"").trim();
+ const {name,position}=await req.json(),n=String(name||"").trim();
+ const positions=["Goalkeeper","Defender","Midfielder","Forward"];
+ if(!positions.includes(position))return Response.json({error:"Select a valid guest playing position"},{status:400});
  if(!n)return Response.json({error:"Guest name is required"},{status:400});
  const {db,state}=await getState();
  if(registrationClosed(state.game))return Response.json({error:"Registration is closed"},{status:409});
@@ -13,7 +15,7 @@ export default async(req)=>{
  const playing=members.filter(m=>state.memberAvailability?.[m.name]!==false&&state.memberAvailability?.[m.name]!=="waiting").length;
  const confirmed=state.guestRecords.filter(g=>g.status==="confirmed").length;
  const status=playing+confirmed<Number(state.game?.capacity||20)?"confirmed":"waiting";
- const now=Date.now();state.guestRecords.push({name:n,status,paid:false,registeredAt:now,queueSince:now,...(status==="confirmed"?{confirmedAt:now}:{})});
- await putState(db,state);return Response.json({ok:true,status,state});
+ const now=Date.now();state.guestRecords.push({name:n,position,status,paid:false,registeredAt:now,queueSince:now,...(status==="confirmed"?{confirmedAt:now}:{})});
+ await putState(db,state);return Response.json({ok:true,status});
 };
 export const config={path:"/api/guest-register"};
