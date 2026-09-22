@@ -166,7 +166,7 @@ input,select{width:100%;padding:14px;margin:8px 0 14px;border-radius:12px;border
 <div class="stat" role="button" tabindex="0" onclick="showAttendance()" style="cursor:pointer"><strong id="waiting">0</strong><div>⌛ Waiting</div></div>
 </div>
 <div id="attendanceDetails" class="status hidden" style="margin-top:14px"></div>
-<div class="actions"><button class="primary" onclick="show('registration')">👤+ &nbsp; Register to Play</button><button class="btn2">ⓘ &nbsp; Game Details</button></div>
+<div class="actions"><button class="primary" onclick="show('registration')">👤+ &nbsp; Register to Play</button><button class="btn2" onclick="show('teamsScreen')">⚽ &nbsp; Team Selection</button></div>
 </div>
 <div class="home-links">
 <button class="home-link" onclick="show('registration')"><span>👥</span>Members</button>
@@ -555,7 +555,7 @@ function activeConfirmedPlayers(){
  return members.concat(guests);
 }
 let generatedTeams=[],teamsPublished=false,teamConditions=[],configuredTeamCount=2;
-const teamColors=["🔵","🟡","🔴","🟢","🟣","🟠","⚪","⚫","🟤"];
+const teamColors=["🔵","🔴","🟡","🟢","🟣","🟠","⚪","⚫","🟤"];
 function teamLabel(i){return "Team "+String.fromCharCode(65+i)}
 function teamTitle(i){return (teamColors[i%teamColors.length])+" "+teamLabel(i)}
 function teamNumber(){return Math.max(2,Math.min(26,Number(document.getElementById("teamCount")?.value)||configuredTeamCount||2))}
@@ -597,7 +597,7 @@ function generateTeams(){
 function makeTeamCard(i,arr,admin){const card=document.createElement("div"),heading=document.createElement("h2");card.className="choice";heading.textContent=`${teamTitle(i)} — ${arr.length} players`;card.append(heading);[...arr].sort((a,b)=>porder(a)-porder(b)).forEach((p,j)=>{const row=document.createElement("div"),name=document.createElement("b"),info=document.createElement("div");row.className="status";row.style.marginBottom="8px";name.textContent=`${j+1}. ${p.name}`;info.className="muted";info.style.fontSize="12px";info.textContent=(p.position||"Unknown")+(admin&&p.type==="Safrook Member"?" • Rating "+p.rating:"");row.append(name,info);card.append(row)});return card}
 function drawGeneratedTeams(){const e=document.getElementById("generatedTeams");if(!e)return;e.replaceChildren();if(!generatedTeams.length){e.textContent="Generate teams to begin.";return}generatedTeams.forEach((t,i)=>e.append(makeTeamCard(i,t,true)));renderPublicTeams()}
 async function publishTeams(){if(generatedTeams.length<2||generatedTeams.some(t=>!t.length)){publishMsg.textContent="Generate or import teams first.";return}if(!validConditions(generatedTeams)){publishMsg.textContent="⚠ Current teams do not satisfy the configured conditions.";return}const prev=teamsPublished;teamsPublished=true;const ok=await saveLocal();if(ok){publishMsg.textContent="✓ Teams published.";renderPublicTeams()}else{teamsPublished=prev;publishMsg.textContent="⚠ Could not publish teams: "+lastSaveError}}
-function teamShareText(){const arabic=["الأول","الثاني","الثالث","الرابع","الخامس","السادس","السابع","الثامن","التاسع","العاشر"];return `⚽ SAFROOK – ${game.title}\n\n`+generatedTeams.map((t,i)=>`${teamColors[i%teamColors.length]} الفريق ${arabic[i]||teamLabel(i)} (${teamLabel(i)})\n`+[...t].sort((a,b)=>porder(a)-porder(b)).map((p,j)=>`${j+1}. ${p.name}`).join("\n")).join("\n\n")+"\n\n⚽ Play • Together • Always Back"}
+function teamShareText(){return `⚽ SAFROOK – ${game.title}\n\n`+generatedTeams.map((t,i)=>`${teamColors[i%teamColors.length]} ${teamLabel(i)}\n`+[...t].sort((a,b)=>porder(a)-porder(b)).map((p,j)=>`${j+1}. ${p.name}`).join("\n")).join("\n\n")+"\n\n⚽ Play • Together • Always Back"}
 async function copyTeams(){if(!generatedTeams.length){publishMsg.textContent="Generate or import teams first.";return}const t=teamShareText();try{await navigator.clipboard.writeText(t);publishMsg.textContent="✓ Copied. Paste into WhatsApp."}catch(e){window.prompt("Copy team list:",t)}}
 function shareTeams(){copyTeams()}
 function importTeams(){
@@ -611,7 +611,7 @@ function importTeams(){
  if(!validConditions(teams)){publishMsg.textContent="⚠ Imported teams conflict with current conditions.";return}
  generatedTeams=teams;configuredTeamCount=teams.length;teamCount.value=String(teams.length);teamsPublished=false;drawGeneratedTeams();saveLocal();publishMsg.textContent=`✓ Imported ${seen.size} players into ${teams.length} teams. Review before publishing.`;
 }
-function renderPublicTeams(){const e=document.getElementById("publicTeams");if(!e)return;e.replaceChildren();if(!teamsPublished||generatedTeams.length<2){e.textContent="Teams have not been published yet.";return}const grid=document.createElement("div");grid.className="reggrid";generatedTeams.forEach((t,i)=>grid.append(makeTeamCard(i,t,false)));e.append(grid)}
+function renderPublicTeams(){const e=document.getElementById("publicTeams");if(!e)return;e.replaceChildren();if(!teamsPublished||generatedTeams.length<2){e.textContent="⏳ Team selection is not available yet. Please check back once the Safrook organizers publish the teams.";return}const grid=document.createElement("div");grid.className="reggrid";generatedTeams.forEach((t,i)=>grid.append(makeTeamCard(i,t,false)));e.append(grid)}
 
 
 
