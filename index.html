@@ -704,7 +704,8 @@ function beginTeamDrag(e,name,card){
   if(ev.pointerId!==data.pointerId)return;
   window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",finish);window.removeEventListener("pointercancel",cancel);
   if(data.active){
-   const zone=document.elementFromPoint(ev.clientX,ev.clientY)?.closest(".team-dropzone");
+   ev.preventDefault();
+   const zone=[...document.querySelectorAll(".team-dropzone")].find(z=>{const box=z.getBoundingClientRect();return ev.clientX>=box.left&&ev.clientX<=box.right&&ev.clientY>=box.top&&ev.clientY<=box.bottom});
    data.ghost?.remove();card.classList.remove("team-drag-source");
    document.querySelectorAll(".team-dropzone").forEach(z=>z.classList.remove("team-drop-hover"));
    if(zone){selectedTeamPlayer="";manualAssignPlayer(name,Number(zone.dataset.teamIndex))}
