@@ -46,3 +46,27 @@ test('manual assignment and swapping keep published teams unchanged until republ
  await expect.poll(()=>page.locator('#publishMsg').textContent()).toContain('Teams published');
  expect(await page.locator('#publicTeams').textContent()).not.toBe(oldPublished);
 });
+
+test('dragging a player card between Blue and Red changes draft only',async({page,isMobile})=>{
+ test.skip(isMobile,'Desktop pointer-drag regression test');
+ let state=base();state.safrookMembers=[
+ {name:'Drag One',pin:'1001',active:true,age:35,rating:3,position:'Defender'},
+ {name:'Drag Two',pin:'1002',active:true,age:35,rating:3,position:'Midfielder'},
+ {name:'Drag Three',pin:'1003',active:true,age:35,rating:3,position:'Forward'},
+ {name:'Drag Four',pin:'1004',active:true,age:35,rating:3,position:'Goalkeeper'}];
+ await page.addInitScript(()=>sessionStorage.setItem('safrook_admin_token','qa-token'));
+ await page.route('**/api/state',async route=>{
+  if(route.request().method()==='GET')return route.fulfill({json:state,headers:{'x-safrook-revision':'qa-revision-1'}});
+  state=route.request().postDataJSON();return route.fulfill({json:{ok:true},headers:{'x-safrook-revision':'qa-revision-2'}});
+ });
+ await page.goto('/');
+ await page.evaluate(()=>{show('adminScreen');adminTab('teamsAdmin');startManualTeams();});
+ const card=page.locator('.team-player-card[data-player-name="Drag One"]');
+ const dest=page.locator('.team-dropzone[data-team-index="0"]');
+ const from=await card.boundingBox(),to=await dest.boundingBox();
+ expect(from).toBeTruthy();expect(to).toBeTruthy();
+ await page.mouse.move(from.x+from.width/2,from.y+from.height/2);
+ await page.mouse.down();await page.mouse.move(to.x+to.width/2,to.y+to.height/2,{steps:12});await page.mouse.up();
+ await expect(dest.locator('[data-player-name="Drag One"]')).toBeVisible();
+ await expect(page.locator('#manualTeamMessage')).toContainText('Draft updated');
+});
