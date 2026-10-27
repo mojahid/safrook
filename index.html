@@ -304,6 +304,9 @@ input,select{width:100%;padding:14px;margin:8px 0 14px;border-radius:12px;border
 <div id="manualTeamMessage" class="status" style="margin-top:10px"></div>
 <div id="teamSummary" class="status" style="margin-top:16px"></div>
 <div class="actions" style="margin-top:14px"><button class="btn2" onclick="generateTeams()">↻ Regenerate</button><button class="primary" onclick="publishTeams()">✓ Publish Teams</button><button class="btn2" onclick="copyTeams()">Copy for WhatsApp</button></div>
+<div class="status" style="margin-top:12px"><strong id="teamVisibilityStatus">Team selection is not published.</strong>
+<div class="actions" style="margin-top:10px"><button id="unpublishTeamsBtn" class="btn2" onclick="unpublishTeams()">Unpublish Teams</button><button id="republishTeamsBtn" class="btn2" onclick="republishTeams()">Republish Teams</button></div>
+<p class="muted" style="font-size:13px">Unpublish hides teams from members but keeps your draft and saved selection. Republish makes your current reviewed draft visible again.</p></div>
 <h3 style="margin:24px 0 8px">Import Team Selection</h3>
 <p class="muted">Paste Team A, Team B, Team C… or الفريق الأول، الثاني، الثالث… and review before publishing.</p>
 <textarea id="teamImportText" placeholder="🔵 Team A&#10;1. Player Name&#10;&#10;🔴 Team B&#10;1. Player Name" style="width:100%;min-height:160px;padding:14px;margin:8px 0 12px;border-radius:12px;border:1px solid #365b7e;background:#071a31;color:white;font:inherit"></textarea>
@@ -722,6 +725,27 @@ function drawGeneratedTeams(){
  if(!generatedTeams.length){e.textContent="Generate teams or choose Start From Scratch.";renderPublicTeams();return}
  renderManualEditor();renderPublicTeams();
 }
+function updateTeamPublicationControls(){
+ const status=document.getElementById("teamVisibilityStatus");
+ const unpublish=document.getElementById("unpublishTeamsBtn");
+ const republish=document.getElementById("republishTeamsBtn");
+ if(status)status.textContent=teamsPublished?"✓ Teams are visible to members.":"⏳ Teams are hidden from members.";
+ if(unpublish)unpublish.disabled=!teamsPublished;
+ if(republish)republish.disabled=teamsPublished||generatedTeams.length<2;
+}
+async function unpublishTeams(){
+ if(!teamsPublished){publishMsg.textContent="Teams are already hidden.";return}
+ if(!window.confirm("Hide the published teams from members? Your saved teams and draft will be kept."))return;
+ teamsPublished=false;
+ const ok=await saveLocal();
+ if(ok){publishMsg.textContent="✓ Teams unpublished. Members now see the waiting message.";renderPublicTeams()}
+ else{teamsPublished=true;publishMsg.textContent="⚠ Could not unpublish: "+lastSaveError;renderPublicTeams()}
+ updateTeamPublicationControls();
+}
+async function republishTeams(){
+ if(teamsPublished){publishMsg.textContent="Teams are already published. Use Publish Teams to post your latest draft.";return}
+ await publishTeams();
+}
 async function publishTeams(){
  const eligible=activeConfirmedPlayers(),all=generatedTeams.flat(),names=new Set(all.map(p=>p.name));
  if(generatedTeams.length<2||generatedTeams.some(t=>!t.length)){publishMsg.textContent="Complete all teams before publishing.";return}
@@ -730,8 +754,8 @@ async function publishTeams(){
  const prev=structuredClone(publishedTeams),wasPublished=teamsPublished;
  publishedTeams=structuredClone(generatedTeams);teamsPublished=true;
  const ok=await saveLocal();
- if(ok){publishMsg.textContent="✓ Teams published.";renderPublicTeams()}
- else{publishedTeams=prev;teamsPublished=wasPublished;publishMsg.textContent="⚠ Could not publish teams: "+lastSaveError}
+ if(ok){publishMsg.textContent="✓ Teams published.";renderPublicTeams();updateTeamPublicationControls()}
+ else{publishedTeams=prev;teamsPublished=wasPublished;publishMsg.textContent="⚠ Could not publish teams: "+lastSaveError;updateTeamPublicationControls()}
 }
 function teamShareText(){return `⚽ SAFROOK – ${game.title}\n\n`+generatedTeams.map((t,i)=>`${teamColors[i%teamColors.length]} ${teamLabel(i)}\n`+[...t].sort((a,b)=>porder(a)-porder(b)).map((p,j)=>`${j+1}. ${p.name}`).join("\n")).join("\n\n")+"\n\n⚽ Play • Together • Always Back"}
 async function copyTeams(){if(!generatedTeams.length){publishMsg.textContent="Generate or import teams first.";return}const t=teamShareText();try{await navigator.clipboard.writeText(t);publishMsg.textContent="✓ Copied. Paste into WhatsApp."}catch(e){window.prompt("Copy team list:",t)}}
@@ -747,7 +771,7 @@ function importTeams(){
  if(!validConditions(teams)){publishMsg.textContent="⚠ Imported teams conflict with current conditions.";return}
  generatedTeams=teams;configuredTeamCount=teams.length;teamCount.value=String(teams.length);manualEditorActive=true;drawGeneratedTeams();saveLocal();publishMsg.textContent=`✓ Imported ${seen.size} players into ${teams.length} teams. Review before publishing.`;
 }
-function renderPublicTeams(){const e=document.getElementById("publicTeams");if(!e)return;e.replaceChildren();if(!teamsPublished||publishedTeams.length<2){e.textContent="⏳ Team selection is not available yet. Please check back once the Safrook organizers publish the teams.";return}const grid=document.createElement("div");grid.className="reggrid";publishedTeams.forEach((t,i)=>grid.append(makeTeamCard(i,t,false)));e.append(grid)}
+function renderPublicTeams(){updateTeamPublicationControls();const e=document.getElementById("publicTeams");if(!e)return;e.replaceChildren();if(!teamsPublished||publishedTeams.length<2){e.textContent="⏳ Team selection is not available yet. Please check back once the Safrook organizers publish the teams.";return}const grid=document.createElement("div");grid.className="reggrid";publishedTeams.forEach((t,i)=>grid.append(makeTeamCard(i,t,false)));e.append(grid)}
 
 
 
