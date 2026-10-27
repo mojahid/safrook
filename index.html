@@ -287,6 +287,13 @@ input,select{width:100%;padding:14px;margin:8px 0 14px;border-radius:12px;border
 </div>
 <button class="primary" style="width:100%;margin:18px 0" onclick="generateTeams()">⚽ Generate Balanced Teams</button>
 <div id="generatedTeams" class="reggrid"></div>
+<div class="choice" style="margin-top:18px">
+<h3>✋ Manual Team Selection</h3>
+<p class="muted">Assign confirmed players to teams manually, or adjust generated teams. These are draft changes until you publish.</p>
+<button class="btn2" onclick="startManualTeams()">Start Manual Selection</button>
+<div id="manualTeamEditor" style="margin-top:12px"></div>
+<div id="manualTeamMessage" class="status" style="margin-top:10px"></div>
+</div>
 <div id="teamSummary" class="status" style="margin-top:16px"></div>
 <div class="actions" style="margin-top:14px"><button class="btn2" onclick="generateTeams()">↻ Regenerate</button><button class="primary" onclick="publishTeams()">✓ Publish Teams</button><button class="btn2" onclick="copyTeams()">Copy for WhatsApp</button></div>
 <h3 style="margin:24px 0 8px">Import Team Selection</h3>
@@ -554,7 +561,8 @@ function activeConfirmedPlayers(){
  .map(g=>({name:g.name,position:g.position||"Unknown",age:Number(g.age)||35,rating:Number(g.rating)||2,type:"Guest"}));
  return members.concat(guests);
 }
-let generatedTeams=[],teamsPublished=false,teamConditions=[],configuredTeamCount=2;
+let generatedTeams=[],teamsPublished=false,teamConditions=[],configuredTeamCount=2,publishedTeams=[];
+let manualEditorActive=false;
 const teamColors=["🔵","🔴","🟡","🟢","🟣","🟠","⚪","⚫","🟤"];
 function teamLabel(i){return "Team "+String.fromCharCode(65+i)}
 function teamTitle(i){return (teamColors[i%teamColors.length])+" "+teamLabel(i)}
@@ -592,11 +600,76 @@ function generateTeams(){
   if(!validConditions(teams))continue;const c=balanceCost(teams);if(c<bc){best=teams.map(t=>[...t]);bc=c}
  }
  if(!best){teamSummary.textContent="⚠ Could not satisfy all conditions. Check conflicting rules or change team count.";return}
- generatedTeams=best;teamsPublished=false;drawGeneratedTeams();saveLocal();teamSummary.textContent=`✓ ${ps.length} confirmed players • ${n} teams • Ratings: ${best.map(t=>metrics(t).rating).join(" / ")} • ${teamConditions.length} condition(s)`;
+ generatedTeams=best;drawGeneratedTeams();saveLocal();teamSummary.textContent=`✓ ${ps.length} confirmed players • ${n} teams • Ratings: ${best.map(t=>metrics(t).rating).join(" / ")} • ${teamConditions.length} condition(s)`;
 }
+
+function startManualTeams(){
+ const ps=activeConfirmedPlayers(),n=teamNumber();
+ if(ps.length<n){manualTeamMessage.textContent="Not enough confirmed players to fill teams.";return}
+ const known=new Set(ps.map(p=>p.name));
+ // Keep current draft placements, but never bring in unconfirmed players.
+ const next=Array.from({length:n},()=>[]);
+ generatedTeams.slice(0,n).forEach((t,i)=>t.forEach(p=>{const current=ps.find(x=>x.name===p.name);if(current&&!next.some(team=>team.some(x=>x.name===p.name)))next[i].push(current)}));
+ generatedTeams=next;configuredTeamCount=n;manualEditorActive=true;drawGeneratedTeams();
+ manualTeamMessage.textContent="Assign each unassigned player to a team, then publish when ready.";
+}
+function manualAssignPlayer(name,index){
+ if(!manualEditorActive)return;
+ const p=activeConfirmedPlayers().find(x=>x.name===name);if(!p)return;
+ generatedTeams.forEach(t=>{const at=t.findIndex(x=>x.name===name);if(at>=0)t.splice(at,1)});
+ if(index>=0&&generatedTeams[index])generatedTeams[index].push(p);
+ drawGeneratedTeams();manualTeamMessage.textContent="Draft updated. Click Publish Teams when complete.";
+}
+function manualSwapPlayers(){
+ const a=document.getElementById("swapBlue"),b=document.getElementById("swapRed");
+ if(!a||!b||!a.value||!b.value){manualTeamMessage.textContent="Select one player from each team.";return}
+ const ai=generatedTeams[0].findIndex(p=>p.name===a.value),bi=generatedTeams[1].findIndex(p=>p.name===b.value);
+ if(ai<0||bi<0)return;
+ const tmp=generatedTeams[0][ai];generatedTeams[0][ai]=generatedTeams[1][bi];generatedTeams[1][bi]=tmp;
+ manualEditorActive=true;drawGeneratedTeams();manualTeamMessage.textContent="Players swapped in draft. Publish when ready.";
+}
+function renderManualEditor(){
+ const root=document.getElementById("manualTeamEditor");if(!root)return;
+ root.replaceChildren();if(!manualEditorActive)return;
+ const ps=activeConfirmedPlayers(),assigned=new Set(generatedTeams.flat().map(p=>p.name));
+ const counters=document.createElement("p");counters.className="muted";
+ counters.textContent=assigned.size+" of "+ps.length+" confirmed players assigned";root.append(counters);
+ const wrap=document.createElement("div");wrap.className="reggrid";
+ ps.forEach(p=>{
+  const row=document.createElement("div");row.className="status";row.style.marginBottom="5px";
+  const label=document.createElement("label");label.textContent=p.name+" · "+(p.position||"Unknown")+" ";label.style.display="block";
+  const sel=document.createElement("select");sel.style.width="100%";
+  sel.append(new Option("Unassigned","-1"));
+  generatedTeams.forEach((team,i)=>sel.append(new Option(teamTitle(i),String(i))));
+  sel.value=String(generatedTeams.findIndex(team=>team.some(q=>q.name===p.name)));
+  sel.onchange=()=>manualAssignPlayer(p.name,Number(sel.value));
+  row.append(label,sel);wrap.append(row);
+ });root.append(wrap);
+ if(generatedTeams.length===2&&generatedTeams.every(t=>t.length)){
+  const section=document.createElement("div");section.className="status";
+  const title=document.createElement("strong");title.textContent="Swap Players (Blue ↔ Red)";
+  const a=document.createElement("select");a.id="swapBlue";a.style.width="100%";
+  const b=document.createElement("select");b.id="swapRed";b.style.width="100%";
+  generatedTeams[0].forEach(p=>a.append(new Option("🔵 "+p.name,p.name)));
+  generatedTeams[1].forEach(p=>b.append(new Option("🔴 "+p.name,p.name)));
+  const btn=document.createElement("button");btn.className="btn2";btn.textContent="Swap Selected Players";btn.onclick=manualSwapPlayers;
+  section.append(title,a,b,btn);root.append(section);
+ }
+}
+
 function makeTeamCard(i,arr,admin){const card=document.createElement("div"),heading=document.createElement("h2");card.className="choice";heading.textContent=`${teamTitle(i)} — ${arr.length} players`;card.append(heading);[...arr].sort((a,b)=>porder(a)-porder(b)).forEach((p,j)=>{const row=document.createElement("div"),name=document.createElement("b"),info=document.createElement("div");row.className="status";row.style.marginBottom="8px";name.textContent=`${j+1}. ${p.name}`;info.className="muted";info.style.fontSize="12px";info.textContent=(p.position||"Unknown")+(admin&&p.type==="Safrook Member"?" • Rating "+p.rating:"");row.append(name,info);card.append(row)});return card}
-function drawGeneratedTeams(){const e=document.getElementById("generatedTeams");if(!e)return;e.replaceChildren();if(!generatedTeams.length){e.textContent="Generate teams to begin.";return}generatedTeams.forEach((t,i)=>e.append(makeTeamCard(i,t,true)));renderPublicTeams()}
-async function publishTeams(){if(generatedTeams.length<2||generatedTeams.some(t=>!t.length)){publishMsg.textContent="Generate or import teams first.";return}if(!validConditions(generatedTeams)){publishMsg.textContent="⚠ Current teams do not satisfy the configured conditions.";return}const prev=teamsPublished;teamsPublished=true;const ok=await saveLocal();if(ok){publishMsg.textContent="✓ Teams published.";renderPublicTeams()}else{teamsPublished=prev;publishMsg.textContent="⚠ Could not publish teams: "+lastSaveError}}
+function drawGeneratedTeams(){const e=document.getElementById("generatedTeams");if(!e)return;e.replaceChildren();if(!generatedTeams.length){e.textContent="Generate teams to begin.";return}generatedTeams.forEach((t,i)=>e.append(makeTeamCard(i,t,true)));renderManualEditor();renderPublicTeams()}
+async function publishTeams(){
+ const eligible=activeConfirmedPlayers(),all=generatedTeams.flat(),names=new Set(all.map(p=>p.name));
+ if(generatedTeams.length<2||generatedTeams.some(t=>!t.length)){publishMsg.textContent="Complete all teams before publishing.";return}
+ if(all.length!==eligible.length||names.size!==all.length||eligible.some(p=>!names.has(p.name))){publishMsg.textContent="⚠ Every confirmed player must appear exactly once. Update the draft before publishing.";return}
+ if(!validConditions(generatedTeams)){publishMsg.textContent="⚠ Current teams do not satisfy the configured conditions.";return}
+ const prev=structuredClone(publishedTeams),wasPublished=teamsPublished;
+ publishedTeams=structuredClone(generatedTeams);teamsPublished=true;
+ const ok=await saveLocal();
+ if(ok){publishMsg.textContent="✓ Teams published.";renderPublicTeams()}
+ else{publishedTeams=prev;teamsPublished=wasPublished;publishMsg.textContent="⚠ Could not publish teams: "+lastSaveError}
+}
 function teamShareText(){return `⚽ SAFROOK – ${game.title}\n\n`+generatedTeams.map((t,i)=>`${teamColors[i%teamColors.length]} ${teamLabel(i)}\n`+[...t].sort((a,b)=>porder(a)-porder(b)).map((p,j)=>`${j+1}. ${p.name}`).join("\n")).join("\n\n")+"\n\n⚽ Play • Together • Always Back"}
 async function copyTeams(){if(!generatedTeams.length){publishMsg.textContent="Generate or import teams first.";return}const t=teamShareText();try{await navigator.clipboard.writeText(t);publishMsg.textContent="✓ Copied. Paste into WhatsApp."}catch(e){window.prompt("Copy team list:",t)}}
 function shareTeams(){copyTeams()}
@@ -609,9 +682,9 @@ function importTeams(){
  const ps=activeConfirmedPlayers(),byName=new Map(ps.map(p=>[p.name.trim().toLowerCase(),p])),missing=[],seen=new Set(),teams=keys.map(k=>groups.get(k).map(n=>{const p=byName.get(n.toLowerCase());if(!p)missing.push(n);else if(seen.has(p.name))missing.push(n+" (duplicate)");else seen.add(p.name);return p}).filter(Boolean));
  if(missing.length||teams.some(t=>!t.length)){publishMsg.textContent="⚠ Fix unmatched/duplicate players: "+missing.join(", ");return}
  if(!validConditions(teams)){publishMsg.textContent="⚠ Imported teams conflict with current conditions.";return}
- generatedTeams=teams;configuredTeamCount=teams.length;teamCount.value=String(teams.length);teamsPublished=false;drawGeneratedTeams();saveLocal();publishMsg.textContent=`✓ Imported ${seen.size} players into ${teams.length} teams. Review before publishing.`;
+ generatedTeams=teams;configuredTeamCount=teams.length;teamCount.value=String(teams.length);drawGeneratedTeams();saveLocal();publishMsg.textContent=`✓ Imported ${seen.size} players into ${teams.length} teams. Review before publishing.`;
 }
-function renderPublicTeams(){const e=document.getElementById("publicTeams");if(!e)return;e.replaceChildren();if(!teamsPublished||generatedTeams.length<2){e.textContent="⏳ Team selection is not available yet. Please check back once the Safrook organizers publish the teams.";return}const grid=document.createElement("div");grid.className="reggrid";generatedTeams.forEach((t,i)=>grid.append(makeTeamCard(i,t,false)));e.append(grid)}
+function renderPublicTeams(){const e=document.getElementById("publicTeams");if(!e)return;e.replaceChildren();if(!teamsPublished||publishedTeams.length<2){e.textContent="⏳ Team selection is not available yet. Please check back once the Safrook organizers publish the teams.";return}const grid=document.createElement("div");grid.className="reggrid";publishedTeams.forEach((t,i)=>grid.append(makeTeamCard(i,t,false)));e.append(grid)}
 
 
 
@@ -729,7 +802,7 @@ async function adminLogout(){adminToken="";sessionStorage.removeItem("safrook_ad
 
 function snapshot(){
  return {game,safrookMembers,memberAvailability,guestRecords,announcements,games,memberWaitSince,gameArchive,
-         teams:{groups:generatedTeams,published:teamsPublished,conditions:teamConditions,count:configuredTeamCount}};
+         teams:{groups:generatedTeams,published:teamsPublished,publishedGroups:publishedTeams,conditions:teamConditions,count:configuredTeamCount}};
 }
 let lastSaveError="";
 let serverRevision=null;
@@ -789,7 +862,7 @@ function applyState(x){
  if(x.games)games=x.games;
  if(x.memberWaitSince)memberWaitSince=x.memberWaitSince;
  if(x.gameArchive)gameArchive=x.gameArchive;
- if(x.teams){generatedTeams=x.teams.groups||[x.teams.a||[],x.teams.b||[]].filter(t=>t.length);teamsPublished=!!x.teams.published;teamConditions=x.teams.conditions||[];configuredTeamCount=x.teams.count||generatedTeams.length||2;const tc=document.getElementById("teamCount");if(tc)tc.value=configuredTeamCount}
+ if(x.teams){generatedTeams=x.teams.groups||[x.teams.a||[],x.teams.b||[]].filter(t=>t.length);teamsPublished=!!x.teams.published;publishedTeams=x.teams.publishedGroups|| (teamsPublished?structuredClone(generatedTeams):[]);teamConditions=x.teams.conditions||[];configuredTeamCount=x.teams.count||generatedTeams.length||2;const tc=document.getElementById("teamCount");if(tc)tc.value=configuredTeamCount}
  state.capacity=game.capacity;
  state.totalMembers=safrookMembers.filter(m=>m.active!==false).length;
  state.unavailableMembers=Object.values(memberAvailability).filter(v=>v===false).length;
@@ -851,7 +924,7 @@ async function createNextGame(auto=false){
  const oldKey=game.date+"|"+game.start;
  gameArchive.push({...structuredClone(game),gameKey:oldKey,status:"completed",memberAvailability:structuredClone(memberAvailability),guestRecords:structuredClone(guestRecords),teams:structuredClone(generatedTeams),archivedAt:Date.now()});
  const [y,m,d]=game.date.split("-").map(Number);const next=new Date(Date.UTC(y,m-1,d+7));game.date=next.toISOString().slice(0,10);
- memberAvailability={};memberWaitSince={};guestRecords=[];generatedTeams=[];teamsPublished=false;game.registrationOpen=true;
+ memberAvailability={};memberWaitSince={};guestRecords=[];generatedTeams=[];publishedTeams=[];teamsPublished=false;game.registrationOpen=true;
  state.totalMembers=safrookMembers.filter(m=>m.active!==false).length;state.unavailableMembers=0;syncGuests();loadGameForm();render();renderGuestAdmin();renderGames("upcoming");
  const ok=await saveLocal();if(!ok){applyState(backup);loadGameForm();syncGuests();render();renderGuestAdmin();alert("Game rollover failed: "+lastSaveError)}
  else if(!auto)alert("Game archived. Next weekly game created.");
@@ -874,7 +947,7 @@ async function saveGame(){
  if(!capacityResult.ok){applyState(backup);syncGuests();render();renderGuestAdmin();loadGameForm();gameAdminMsg.textContent="⚠ "+capacityResult.error;return;}
  game.capacity=proposedCapacity;
  game.guestFee=Math.max(0,parseFloat(gFee.value)||0);game.priorityHours=Math.max(0,Number(gPriority.value)||0);game.registrationOpen=gOpen.checked;
- if(oldGameKey!==game.date+"|"+game.start+"|"+game.location){generatedTeams=[];teamsPublished=false;teamConditions=[];}
+ if(oldGameKey!==game.date+"|"+game.start+"|"+game.location){generatedTeams=[];publishedTeams=[];teamsPublished=false;teamConditions=[];}
  state.capacity=game.capacity;
  promoteWaiting();
  render();renderGuestAdmin();
