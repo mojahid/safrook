@@ -154,3 +154,33 @@ test('unpublish hides member team view, cancel preserves, republish restores wit
  await expect(page.locator('#publicTeams')).toContainText('Pub One');
  expect(state.teams.published).toBe(true);
 });
+
+test('announcement date displays Eastern publish date and legacy unknown correctly',async({page})=>{
+ const state=base();state.announcements=[
+  {title:'Past Notice',text:'Older item',publishedAt:'2026-10-21T22:30:00Z'},
+  {title:'Legacy Notice',text:'Saved before timestamp fix',date:'Today'}
+ ];
+ await page.route('**/api/state',route=>route.fulfill({json:state,headers:{'x-safrook-revision':'qa-revision-1'}}));
+ await page.goto('/');
+ await page.evaluate(()=>{show('announcementsScreen');renderAnnouncements()});
+ const content=await page.locator('#announcementList').innerText();
+ expect(content).toContain('Oct 21, 2026');
+ expect(content).toContain('Date unavailable');
+ expect(content).not.toContain('Today');
+});
+test('new announcement gets a timestamp and edits retain original publish date',async({page})=>{
+ let state=base();await page.addInitScript(()=>sessionStorage.setItem('safrook_admin_token','qa-token'));
+ await page.route('**/api/state',async route=>{
+  if(route.request().method()==='GET')return route.fulfill({json:state,headers:{'x-safrook-revision':'qa-revision-1'}});
+  state=route.request().postDataJSON();return route.fulfill({json:{ok:true},headers:{'x-safrook-revision':'qa-revision-2'}});
+ });
+ await page.goto('/');
+ await page.evaluate(()=>{show('adminScreen');adminTab('newsAdmin');announcementTitle.value='New Notice';announcementText.value='Details';});
+ await page.evaluate(()=>addAnnouncement());
+ await expect.poll(()=>state.announcements.length).toBe(1);
+ const first=state.announcements[0].publishedAt;expect(Number.isFinite(Date.parse(first))).toBe(true);
+ await page.evaluate(()=>{editAnnouncement(0);announcementText.value='Updated details';});
+ await page.evaluate(()=>addAnnouncement());
+ await expect.poll(()=>state.announcements[0].text).toBe('Updated details');
+ expect(state.announcements[0].publishedAt).toBe(first);
+});
