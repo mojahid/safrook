@@ -19,7 +19,14 @@ export default async (req) => {
    const rows=await db.sql`SELECT payload,updated_at::text AS revision FROM app_state WHERE id=${"safrook"}`;
    const payload=rows[0]?.payload||{};
    const token=(req.headers.get("authorization")||"").replace(/^Bearer\s+/,"");
-   const visible=validToken(token)?payload:{...payload,safrookMembers:(payload.safrookMembers||[]).map(({pin,...member})=>member)};
+   const visible=validToken(token)?payload:(()=>{
+    const t=payload.teams||{};
+    const published=t.published?(t.publishedGroups||t.groups||[]):[];
+    return {...payload,
+      safrookMembers:(payload.safrookMembers||[]).map(({pin,...member})=>member),
+      teams:{groups:published,publishedGroups:published,published:!!t.published,count:published.length||t.count||2,conditions:[]}
+    };
+   })();
    return Response.json(visible, {headers:{...headers,"x-safrook-revision":rows[0]?.revision||"missing"}});
   }
   if(req.method==="POST"){
