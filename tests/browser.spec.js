@@ -147,6 +147,7 @@ test('unpublish hides member team view, cancel preserves, republish restores wit
  expect(state.teams.groups.flat().length).toBe(2);
  expect(state.teams.publishedGroups.flat().length).toBe(2);
  await page.reload();
+ await page.evaluate(()=>show('teamsScreen'));
  await expect(page.locator('#publicTeams')).toContainText('not available yet');
  await page.evaluate(()=>{show('adminScreen');adminTab('teamsAdmin');});
  await page.getByRole('button',{name:'Republish Teams'}).click();
