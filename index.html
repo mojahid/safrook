@@ -796,7 +796,7 @@ function renderGames(type="upcoming"){
 
 function announcementPublicationDate(a){
  const override=a.publishedDate;
- if(override&&/^\\d{4}-\\d{2}-\\d{2}$/.test(override)){
+ if(override&&/^\d{4}-\d{2}-\d{2}$/.test(override)){
   const d=new Date(override+"T12:00:00Z");
   if(Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===override)
    return new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",month:"short",day:"numeric",year:"numeric"}).format(d);
@@ -862,7 +862,7 @@ function editAnnouncement(i){
  editingAnnouncementIndex=i;
  announcementTitle.value=a.title;
  announcementText.value=a.text;
- announcementDate.value=a.publishedDate||((a.publishedAt||a.createdAt)&&Number.isFinite(new Date(a.publishedAt||a.createdAt).getTime())?new Intl.DateTimeFormat("en-CA",{timeZone:"America/New_York",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(a.publishedAt||a.createdAt)):"");
+ announcementDate.value=a.publishedDate||((a.publishedAt||a.createdAt)&&Number.isFinite(new Date(a.publishedAt||a.createdAt).getTime())?new Date(a.publishedAt||a.createdAt).toLocaleDateString("sv-SE",{timeZone:"America/New_York"}):"");
  const btn=document.querySelector("#newsAdmin .memberbtn");
  if(btn)btn.textContent="✓ Save Changes";
  announcementAdminMsg.innerHTML='<div class="status">Editing '+a.title+'.</div>';
