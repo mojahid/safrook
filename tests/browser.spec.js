@@ -63,10 +63,12 @@ test('dragging a player card between Blue and Red changes draft only',async({pag
  await page.evaluate(()=>{show('adminScreen');adminTab('teamsAdmin');startManualTeams();});
  const card=page.locator('.team-player-card[data-player-name="Drag One"]');
  const dest=page.locator('.team-dropzone[data-team-index="0"]');
+ await card.scrollIntoViewIfNeeded();await dest.scrollIntoViewIfNeeded();
  const from=await card.boundingBox(),to=await dest.boundingBox();
  expect(from).toBeTruthy();expect(to).toBeTruthy();
  await page.mouse.move(from.x+from.width/2,from.y+from.height/2);
  await page.mouse.down();await page.mouse.move(to.x+to.width/2,to.y+to.height/2,{steps:12});await page.mouse.up();
+ console.log('DRAG_DIAGNOSTICS',await page.evaluate(()=>({assigned:generatedTeams.map(t=>t.map(p=>p.name)),teamDrag:!!teamDrag,viewport:[innerWidth,innerHeight],zones:[...document.querySelectorAll('.team-dropzone')].map(z=>({team:z.dataset.teamIndex,rect:[z.getBoundingClientRect().x,z.getBoundingClientRect().y,z.getBoundingClientRect().width,z.getBoundingClientRect().height]}))})));
  await expect(dest.locator('[data-player-name="Drag One"]')).toBeVisible();
  await expect(page.locator('#manualTeamMessage')).toContainText('Draft updated');
 });
