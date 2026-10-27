@@ -184,3 +184,23 @@ test('new announcement gets a timestamp and edits retain original publish date',
  await expect.poll(()=>state.announcements[0].text).toBe('Updated details');
  expect(state.announcements[0].publishedAt).toBe(first);
 });
+
+test('admin corrects legacy announcement date and preserves it across reload',async({page})=>{
+ let state=base();state.announcements=[{title:'Legacy item',text:'Preserved',date:'Today'}];
+ await page.addInitScript(()=>sessionStorage.setItem('safrook_admin_token','qa-token'));
+ await page.route('**/api/state',async route=>{
+  if(route.request().method()==='GET')return route.fulfill({json:state,headers:{'x-safrook-revision':'qa-revision-1'}});
+  state=route.request().postDataJSON();return route.fulfill({json:{ok:true},headers:{'x-safrook-revision':'qa-revision-2'}});
+ });
+ await page.goto('/');
+ await page.evaluate(()=>{show('adminScreen');adminTab('newsAdmin');editAnnouncement(0);});
+ await expect(page.locator('#announcementDate')).toHaveValue('');
+ await page.locator('#announcementDate').fill('2026-10-21');
+ await page.evaluate(()=>addAnnouncement());
+ await expect.poll(()=>state.announcements[0].publishedDate).toBe('2026-10-21');
+ expect(state.announcements[0].text).toBe('Preserved');
+ await page.reload();
+ await page.evaluate(()=>{show('announcementsScreen');renderAnnouncements()});
+ await expect(page.locator('#announcementList')).toContainText('Oct 21, 2026');
+ await expect(page.locator('#announcementList')).not.toContainText('Date unavailable');
+});
