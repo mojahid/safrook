@@ -6,7 +6,7 @@ test('guest registration updates dashboard and persists across reload',async({pa
  await page.route('**/api/state',async route=>{if(route.request().method()==='GET')return route.fulfill({json:state,headers:{'x-safrook-revision':'qa-revision-1'}});state=route.request().postDataJSON();return route.fulfill({json:{ok:true},headers:{'x-safrook-revision':'qa-revision-2'}})});
  await page.route('**/api/guest-register',async route=>{const {name}=route.request().postDataJSON();const status=state.guestRecords.length+1<state.game.capacity?'confirmed':'waiting';state.guestRecords.push({name,status,registeredAt:Date.now()});return route.fulfill({json:{ok:true,status,state}})});
  await page.goto('/');await expect(page.locator('#gameTitle')).toHaveText('Safrook QA Game');
- await page.getByRole('button',{name:/Register to Play/}).click();await page.getByRole('button',{name:'Guest Registration'}).click();await page.locator('#guestName').fill('QA Guest');await page.getByRole('button',{name:'Register Guest'}).click();await expect(page.locator('#guestMsg')).toContainText('confirmed');await expect(page.locator('#guests')).toHaveText('1');
+ await page.getByRole('button',{name:/Register to Play/}).click();await page.getByRole('button',{name:'Guest Registration'}).click();await page.locator('#guestName').fill('QA Guest');await page.locator('#guestPosition').selectOption('Midfielder');await page.getByRole('button',{name:'Register Guest'}).click();await expect(page.locator('#guestMsg')).toContainText('confirmed');await expect(page.locator('#guests')).toHaveText('1');
  await page.reload();await expect(page.locator('#guests')).toHaveText('1');
 });
 test('mobile layout shows game and registration',async({page,isMobile})=>{
