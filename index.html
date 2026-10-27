@@ -374,7 +374,7 @@ let guestRecords=[];
 let memberWaitSince={};
 let gameArchive=[];
 let announcements=[
- {title:"Welcome to Safrook",text:"Game registration is open. Please update your status before the weekly game.",date:"Today"}
+ {title:"Welcome to Safrook",text:"Game registration is open. Please update your status before the weekly game."}
 ];
 function show(id){document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');if(id==='teamsScreen')renderPublicTeams();}
 function toggle(id){document.getElementById(id).classList.toggle('hidden')}
@@ -791,11 +791,18 @@ function renderGames(type="upcoming"){
  </div>`).join(""):'<div class="status">No games to show.</div>';
 }
 
+function announcementPublicationDate(a){
+ const value=a.publishedAt||a.createdAt||a.date;
+ if(!value||value==="Today"||value==="Yesterday")return "Date unavailable";
+ const d=typeof value==="number"?new Date(value):new Date(value);
+ if(!Number.isFinite(d.getTime()))return "Date unavailable";
+ return new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",month:"short",day:"numeric",year:"numeric"}).format(d);
+}
 function renderAnnouncements(){
  let list=document.getElementById("announcementList");
  if(list) list.innerHTML=announcements.length?announcements.map((a,i)=>`
  <div class="choice" style="margin-bottom:12px">
-  <div style="display:flex;justify-content:space-between;gap:12px"><b>${a.title}</b><span class="muted" style="font-size:12px">${a.date}</span></div>
+  <div style="display:flex;justify-content:space-between;gap:12px"><b>${a.title}</b><span class="muted" style="font-size:12px">${announcementPublicationDate(a)}</span></div>
   <p style="min-height:auto;margin-bottom:0">${a.text}</p>
  </div>`).join(""):'<div class="status">No announcements yet.</div>';
 
@@ -822,7 +829,7 @@ async function addAnnouncement(){
  if(editingAnnouncementIndex>=0){
    announcements[editingAnnouncementIndex]={...announcements[editingAnnouncementIndex],title:t,text:x};
  }else{
-   announcements.unshift({title:t,text:x,date:"Today"});
+   announcements.unshift({title:t,text:x,publishedAt:new Date().toISOString()});
  }
 
  announcementAdminMsg.innerHTML='<div class="status">Saving announcement...</div>';
