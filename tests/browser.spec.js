@@ -95,3 +95,29 @@ test('mobile touch pointer moves a player card into Blue draft',async({page,isMo
  await expect(page.locator('.team-dropzone[data-team-index="0"] [data-player-name="Touch One"]')).toBeVisible();
  await expect(page.locator('#manualTeamMessage')).toContainText('Draft updated');
 });
+
+test('generated teams are directly draggable without a separate manual section',async({page})=>{
+ const state=base();state.safrookMembers=[
+  {name:'Inline One',pin:'1001',active:true,age:30,rating:3,position:'Defender'},
+  {name:'Inline Two',pin:'1002',active:true,age:30,rating:3,position:'Midfielder'},
+  {name:'Inline Three',pin:'1003',active:true,age:30,rating:3,position:'Forward'},
+  {name:'Inline Four',pin:'1004',active:true,age:30,rating:3,position:'Goalkeeper'}];
+ await page.addInitScript(()=>sessionStorage.setItem('safrook_admin_token','qa-token'));
+ await page.route('**/api/state',route=>route.fulfill({json:state,headers:{'x-safrook-revision':'qa-revision-1'}}));
+ await page.goto('/');
+ await page.evaluate(()=>{show('adminScreen');adminTab('teamsAdmin');generateTeams();});
+ await expect(page.locator('#generatedTeams .team-dropzone[data-team-index="0"]')).toBeVisible();
+ await expect(page.locator('#generatedTeams .team-dropzone[data-team-index="1"]')).toBeVisible();
+ await expect(page.locator('#manualTeamEditor')).toHaveCount(0);
+ await expect(page.locator('#generatedTeams .team-player-card')).toHaveCount(4);
+ const card=page.locator('#generatedTeams .team-dropzone[data-team-index="0"] .team-player-card').first();
+ const name=await card.getAttribute('data-player-name');
+ await card.scrollIntoViewIfNeeded();
+ const dest=page.locator('#generatedTeams .team-dropzone[data-team-index="1"]');
+ await dest.scrollIntoViewIfNeeded();
+ const from=await card.boundingBox(),to=await dest.boundingBox();
+ await page.mouse.move(from.x+from.width/2,from.y+from.height/2);
+ await page.mouse.down();await page.mouse.move(to.x+to.width/2,to.y+to.height/2,{steps:12});await page.mouse.up();
+ await expect(dest.locator('.team-player-card[data-player-name="'+name+'"]')).toBeVisible();
+ await expect(page.locator('#publicTeams')).toContainText('not available yet');
+});
