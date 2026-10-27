@@ -133,7 +133,7 @@ test('unpublish hides member team view, cancel preserves, republish restores wit
  });
  await page.goto('/');
  await page.evaluate(()=>{show('adminScreen');adminTab('teamsAdmin');startManualTeams();manualAssignPlayer('Pub One',0);manualAssignPlayer('Pub Two',1);});
- await page.getByRole('button',{name:'Publish Teams',exact:true}).click();
+ await page.locator('button[onclick="publishTeams()"]').click();
  await expect(page.locator('#teamVisibilityStatus')).toContainText('visible');
  await expect(page.locator('#publicTeams')).toContainText('Pub One');
  page.once('dialog',dialog=>dialog.dismiss());
