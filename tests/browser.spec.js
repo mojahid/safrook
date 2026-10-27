@@ -121,3 +121,36 @@ test('generated teams are directly draggable without a separate manual section',
  await expect(dest.locator('.team-player-card[data-player-name="'+name+'"]')).toBeVisible();
  await expect(page.locator('#publicTeams')).toContainText('not available yet');
 });
+
+test('unpublish hides member team view, cancel preserves, republish restores without losing draft',async({page})=>{
+ let state=base();state.safrookMembers=[
+ {name:'Pub One',pin:'1001',active:true,age:35,rating:3,position:'Defender'},
+ {name:'Pub Two',pin:'1002',active:true,age:35,rating:3,position:'Forward'}];
+ await page.addInitScript(()=>sessionStorage.setItem('safrook_admin_token','qa-token'));
+ await page.route('**/api/state',async route=>{
+  if(route.request().method()==='GET')return route.fulfill({json:state,headers:{'x-safrook-revision':'qa-revision-1'}});
+  state=route.request().postDataJSON();return route.fulfill({json:{ok:true},headers:{'x-safrook-revision':'qa-revision-2'}});
+ });
+ await page.goto('/');
+ await page.evaluate(()=>{show('adminScreen');adminTab('teamsAdmin');startManualTeams();manualAssignPlayer('Pub One',0);manualAssignPlayer('Pub Two',1);});
+ await page.locator('button[onclick="publishTeams()"]').click();
+ await expect(page.locator('#teamVisibilityStatus')).toContainText('visible');
+ await expect(page.locator('#publicTeams')).toContainText('Pub One');
+ page.once('dialog',dialog=>dialog.dismiss());
+ await page.getByRole('button',{name:'Unpublish Teams'}).click();
+ await expect(page.locator('#publicTeams')).toContainText('Pub One');
+ page.once('dialog',dialog=>dialog.accept());
+ await page.getByRole('button',{name:'Unpublish Teams'}).click();
+ await expect(page.locator('#publicTeams')).toContainText('not available yet');
+ await expect(page.locator('#republishTeamsBtn')).toBeEnabled();
+ expect(state.teams.published).toBe(false);
+ expect(state.teams.groups.flat().length).toBe(2);
+ expect(state.teams.publishedGroups.flat().length).toBe(2);
+ await page.reload();
+ await page.evaluate(()=>show('teamsScreen'));
+ await expect(page.locator('#publicTeams')).toContainText('not available yet');
+ await page.evaluate(()=>{show('adminScreen');adminTab('teamsAdmin');});
+ await page.getByRole('button',{name:'Republish Teams'}).click();
+ await expect(page.locator('#publicTeams')).toContainText('Pub One');
+ expect(state.teams.published).toBe(true);
+});
