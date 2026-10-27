@@ -72,3 +72,26 @@ test('dragging a player card between Blue and Red changes draft only',async({pag
  await expect(dest.locator('[data-player-name="Drag One"]')).toBeVisible();
  await expect(page.locator('#manualTeamMessage')).toContainText('Draft updated');
 });
+
+test('mobile touch pointer moves a player card into Blue draft',async({page,isMobile})=>{
+ test.skip(!isMobile,'Mobile project only');
+ const state=base();state.safrookMembers=[
+  {name:'Touch One',pin:'1001',active:true,age:30,rating:3,position:'Defender'},
+  {name:'Touch Two',pin:'1002',active:true,age:30,rating:3,position:'Midfielder'}];
+ await page.addInitScript(()=>sessionStorage.setItem('safrook_admin_token','qa-token'));
+ await page.route('**/api/state',route=>route.fulfill({json:state,headers:{'x-safrook-revision':'qa-revision-1'}}));
+ await page.goto('/');
+ await page.evaluate(()=>{show('adminScreen');adminTab('teamsAdmin');startManualTeams();});
+ await page.locator('.team-player-card[data-player-name="Touch One"]').scrollIntoViewIfNeeded();
+ await page.evaluate(()=>{
+  const card=document.querySelector('.team-player-card[data-player-name="Touch One"]');
+  const zone=document.querySelector('.team-dropzone[data-team-index="0"]');
+  const a=card.getBoundingClientRect(),b=zone.getBoundingClientRect(),id=5;
+  const emit=(target,type,x,y)=>target.dispatchEvent(new PointerEvent(type,{bubbles:true,cancelable:true,pointerId:id,pointerType:'touch',isPrimary:true,clientX:x,clientY:y,buttons:type==='pointerup'?0:1}));
+  emit(card,'pointerdown',a.left+8,a.top+8);
+  emit(window,'pointermove',b.left+b.width/2,b.top+b.height/2);
+  emit(window,'pointerup',b.left+b.width/2,b.top+b.height/2);
+ });
+ await expect(page.locator('.team-dropzone[data-team-index="0"] [data-player-name="Touch One"]')).toBeVisible();
+ await expect(page.locator('#manualTeamMessage')).toContainText('Draft updated');
+});
