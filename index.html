@@ -21,6 +21,18 @@
 input,select{width:100%;padding:14px;margin:8px 0 14px;border-radius:12px;border:1px solid #365b7e;background:#071a31;color:white;font-size:16px}
 .status{padding:14px;border-radius:14px;background:#0d3155;margin-top:14px}.hidden{display:none}
 @media(max-width:720px){.app{padding:14px}.card{padding:24px;border-radius:26px}.title{font-size:36px}.details,.stats,.reggrid{grid-template-columns:1fr}.detail{border-right:0;border-bottom:1px solid #2c628f;padding-bottom:14px}.count{font-size:56px}.actions{grid-template-columns:1fr}.top{padding:4px}.stat{padding:20px}}
+
+.team-board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}
+.team-dropzone{border:2px dashed #667b92;border-radius:16px;min-height:140px;padding:12px;background:#0b213b;display:flex;flex-direction:column;gap:8px}
+.team-dropzone.team-blue{border-color:#3b82f6;background:#0a2c56}
+.team-dropzone.team-red{border-color:#ef4444;background:#401b2d}
+.team-dropzone.team-drop-hover{outline:3px solid #ffca49;outline-offset:1px}
+.team-dropzone small{color:#a7b5c8}
+.team-player-card{display:block;width:100%;border:1px solid #6a87a5;border-radius:11px;background:#143653;color:white;padding:12px 9px;text-align:left;font:600 14px system-ui;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;overflow-wrap:anywhere}
+.team-player-card:focus-visible,.team-picked{outline:3px solid #ffca49}
+.team-player-card.team-drag-source{opacity:.3}
+.team-drag-ghost{position:fixed;z-index:99999;pointer-events:none;width:190px;max-width:65vw;background:#174b7b;color:white;border:2px solid #ffca49;border-radius:11px;padding:12px;font:600 14px system-ui;box-shadow:0 8px 24px #0008}
+@media(max-width:700px){.team-board{grid-template-columns:1fr}.team-dropzone{min-height:90px}}
 </style>
 <style>
 /* Locked compact Safrook home */
@@ -289,7 +301,7 @@ input,select{width:100%;padding:14px;margin:8px 0 14px;border-radius:12px;border
 <div id="generatedTeams" class="reggrid"></div>
 <div class="choice" style="margin-top:18px">
 <h3>✋ Manual Team Selection</h3>
-<p class="muted">Assign confirmed players to teams manually, or adjust generated teams. These are draft changes until you publish.</p>
+<p class="muted">Drag and drop confirmed player cards into Blue or Red (also works on phones). Changes stay private until Publish.</p>
 <button class="btn2" onclick="startManualTeams()">Start Manual Selection</button>
 <div id="manualTeamEditor" style="margin-top:12px"></div>
 <div id="manualTeamMessage" class="status" style="margin-top:10px"></div>
@@ -611,7 +623,7 @@ function startManualTeams(){
  const next=Array.from({length:n},()=>[]);
  generatedTeams.slice(0,n).forEach((t,i)=>t.forEach(p=>{const current=ps.find(x=>x.name===p.name);if(current&&!next.some(team=>team.some(x=>x.name===p.name)))next[i].push(current)}));
  generatedTeams=next;configuredTeamCount=n;manualEditorActive=true;drawGeneratedTeams();
- manualTeamMessage.textContent="Assign each unassigned player to a team, then publish when ready.";
+ manualTeamMessage.textContent="Drag player cards to a team, or tap a player and then tap the destination team.";
 }
 function manualAssignPlayer(name,index){
  if(!manualEditorActive)return;
@@ -628,26 +640,41 @@ function manualSwapPlayers(){
  const tmp=generatedTeams[0][ai];generatedTeams[0][ai]=generatedTeams[1][bi];generatedTeams[1][bi]=tmp;
  manualEditorActive=true;drawGeneratedTeams();manualTeamMessage.textContent="Players swapped in draft. Publish when ready.";
 }
+let teamDrag=null,selectedTeamPlayer="";
 function renderManualEditor(){
  const root=document.getElementById("manualTeamEditor");if(!root)return;
  root.replaceChildren();if(!manualEditorActive)return;
  const ps=activeConfirmedPlayers(),assigned=new Set(generatedTeams.flat().map(p=>p.name));
- const counters=document.createElement("p");counters.className="muted";
- counters.textContent=assigned.size+" of "+ps.length+" confirmed players assigned";root.append(counters);
- const wrap=document.createElement("div");wrap.className="reggrid";
- ps.forEach(p=>{
-  const row=document.createElement("div");row.className="status";row.style.marginBottom="5px";
-  const label=document.createElement("label");label.textContent=p.name+" · "+(p.position||"Unknown")+" ";label.style.display="block";
-  const sel=document.createElement("select");sel.style.width="100%";
-  sel.append(new Option("Unassigned","-1"));
-  generatedTeams.forEach((team,i)=>sel.append(new Option(teamTitle(i),String(i))));
-  sel.value=String(generatedTeams.findIndex(team=>team.some(q=>q.name===p.name)));
-  sel.onchange=()=>manualAssignPlayer(p.name,Number(sel.value));
-  row.append(label,sel);wrap.append(row);
- });root.append(wrap);
+ const count=document.createElement("p");count.className="muted";count.textContent=assigned.size+" of "+ps.length+" confirmed players assigned. Drag cards between columns, or tap a player then tap a destination.";
+ root.append(count);
+ const board=document.createElement("div");board.className="team-board";
+ const columns=[{i:-1,title:"⚪ Unassigned",players:ps.filter(p=>!assigned.has(p.name))},
+  ...generatedTeams.map((team,i)=>({i,title:teamTitle(i),players:team}))];
+ columns.forEach(col=>{
+  const zone=document.createElement("div");zone.className="team-dropzone";zone.dataset.teamIndex=String(col.i);
+  if(col.i===0)zone.classList.add("team-blue");if(col.i===1)zone.classList.add("team-red");
+  const heading=document.createElement("strong");heading.textContent=col.title+" · "+col.players.length;zone.append(heading);
+  const instruction=document.createElement("small");instruction.textContent=col.players.length?"":"Drop players here";zone.append(instruction);
+  col.players.forEach(p=>{
+   const card=document.createElement("button");card.type="button";card.className="team-player-card";
+   card.dataset.playerName=p.name;card.textContent="☰ "+p.name+" · "+(p.position||"Unknown");
+   card.setAttribute("aria-label","Move "+p.name);
+   if(selectedTeamPlayer===p.name)card.classList.add("team-picked");
+   card.addEventListener("pointerdown",e=>beginTeamDrag(e,p.name,card));
+   card.addEventListener("click",()=>{selectedTeamPlayer=selectedTeamPlayer===p.name?"":p.name;renderManualEditor();});
+   zone.append(card);
+  });
+  zone.addEventListener("click",e=>{
+   if(e.target.closest(".team-player-card")||!selectedTeamPlayer)return;
+   const name=selectedTeamPlayer;selectedTeamPlayer="";manualAssignPlayer(name,col.i);
+  });
+  board.append(zone);
+ });
+ root.append(board);
  if(generatedTeams.length===2&&generatedTeams.every(t=>t.length)){
   const section=document.createElement("div");section.className="status";
-  const title=document.createElement("strong");title.textContent="Swap Players (Blue ↔ Red)";
+  section.style.marginTop="12px";
+  const title=document.createElement("strong");title.textContent="Swap Blue ↔ Red (optional)";
   const a=document.createElement("select");a.id="swapBlue";a.style.width="100%";
   const b=document.createElement("select");b.id="swapRed";b.style.width="100%";
   generatedTeams[0].forEach(p=>a.append(new Option("🔵 "+p.name,p.name)));
@@ -655,6 +682,40 @@ function renderManualEditor(){
   const btn=document.createElement("button");btn.className="btn2";btn.textContent="Swap Selected Players";btn.onclick=manualSwapPlayers;
   section.append(title,a,b,btn);root.append(section);
  }
+}
+function beginTeamDrag(e,name,card){
+ if(e.button!==0||teamDrag)return;
+ const startX=e.clientX,startY=e.clientY;
+ const data={name,card,startX,startY,pointerId:e.pointerId,active:false,ghost:null};
+ teamDrag=data;
+ const move=ev=>{
+  if(ev.pointerId!==data.pointerId)return;
+  if(!data.active&&Math.hypot(ev.clientX-startX,ev.clientY-startY)>8){
+   data.active=true;data.ghost=card.cloneNode(true);data.ghost.className="team-drag-ghost";document.body.append(data.ghost);
+   card.classList.add("team-drag-source");
+  }
+  if(data.active){
+   ev.preventDefault();
+   data.ghost.style.left=ev.clientX+12+"px";data.ghost.style.top=ev.clientY+12+"px";
+   document.querySelectorAll(".team-dropzone").forEach(z=>z.classList.toggle("team-drop-hover",z.getBoundingClientRect().left<=ev.clientX&&z.getBoundingClientRect().right>=ev.clientX&&z.getBoundingClientRect().top<=ev.clientY&&z.getBoundingClientRect().bottom>=ev.clientY));
+  }
+ };
+ const finish=ev=>{
+  if(ev.pointerId!==data.pointerId)return;
+  window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",finish);window.removeEventListener("pointercancel",cancel);
+  if(data.active){
+   const zone=document.elementFromPoint(ev.clientX,ev.clientY)?.closest(".team-dropzone");
+   data.ghost?.remove();card.classList.remove("team-drag-source");
+   document.querySelectorAll(".team-dropzone").forEach(z=>z.classList.remove("team-drop-hover"));
+   if(zone){selectedTeamPlayer="";manualAssignPlayer(name,Number(zone.dataset.teamIndex))}
+   else renderManualEditor();
+  }
+  teamDrag=null;
+ };
+ const cancel=ev=>{if(ev.pointerId!==data.pointerId)return;window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",finish);window.removeEventListener("pointercancel",cancel);data.ghost?.remove();card.classList.remove("team-drag-source");teamDrag=null;};
+ window.addEventListener("pointermove",move,{passive:false});
+ window.addEventListener("pointerup",finish);
+ window.addEventListener("pointercancel",cancel);
 }
 
 function makeTeamCard(i,arr,admin){const card=document.createElement("div"),heading=document.createElement("h2");card.className="choice";heading.textContent=`${teamTitle(i)} — ${arr.length} players`;card.append(heading);[...arr].sort((a,b)=>porder(a)-porder(b)).forEach((p,j)=>{const row=document.createElement("div"),name=document.createElement("b"),info=document.createElement("div");row.className="status";row.style.marginBottom="8px";name.textContent=`${j+1}. ${p.name}`;info.className="muted";info.style.fontSize="12px";info.textContent=(p.position||"Unknown")+(admin&&p.type==="Safrook Member"?" • Rating "+p.rating:"");row.append(name,info);card.append(row)});return card}
